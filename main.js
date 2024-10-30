@@ -1143,7 +1143,7 @@ const config = {
     antialias: true,       // Enable anti-aliasing
     antialiasGL: true      // For WebGL rendering
   },
-  pixelArt: true,
+  pixelArt: false,
   scene: [MainMenuScene, MainGameScene]
 };
 
