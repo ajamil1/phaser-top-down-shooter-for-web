@@ -1504,7 +1504,7 @@ class Cursor extends Phaser.Physics.Arcade.Sprite {
 }
 
 // Game configuration
-const config = {
+const config = { 
   type: Phaser.WEBGL,
   width: window.innerWidth,
   height: window.innerHeight,
