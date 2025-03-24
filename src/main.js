@@ -9,30 +9,19 @@ class MainMenuScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.glsl('bloom', '/assets/shaders/shader0.frag');
-    this.load.glsl('pixelate', '/assets/shaders/pixelate.frag');
-    this.load.image('background', '/assets/tiled-bg.png');
-    this.load.image('playerShip', '/assets/player.png');
-    this.load.image('enemyBullet', '/assets/bullet.png'); 
-    this.load.image('bullet', '/assets/bullet.png'); 
-    this.load.image('dashLine', '/assets/dash-line.png');
-    this.load.image('basicEnemy', '/assets/basic-enemy.png')
-    this.load.image('enemyFighter', '/assets/enemy-fighter.png');
-    this.load.image('upgrade', '/assets/upgrade-base.png')
-    this.load.image('cursor', '/assets/cursor.png')
-    /*
-    this.load.glsl('bloom', 'src/assets/shaders/shader0.frag');
-    this.load.glsl('pixelate', 'src/assets/shaders/pixelate.frag');
-    this.load.image('background', 'src/assets/tiled-bg.png');
-    this.load.image('playerShip', 'src/assets/player.png');
-    this.load.image('enemyBullet', 'src/assets/bullet.png'); 
-    this.load.image('bullet', 'src/assets/bullet.png'); 
-    this.load.image('dashLine', 'src/assets/dash-line.png');
+
+    this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
+    this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
+    this.load.image('background', '/src/assets/tiled-bg.png');
+    this.load.image('playerShip', '/src/assets/player.png');
+    this.load.image('enemyBullet', '/src/assets/bullet.png'); 
+    this.load.image('bullet', '/src/assets/bullet.png'); 
+    this.load.image('dashLine', '/src/assets/dash-line.png');
     this.load.image('basicEnemy', '/src/assets/basic-enemy.png')
-    this.load.image('enemyFighter', 'src/assets/enemy-fighter.png');
-    this.load.image('upgrade', 'src/assets/upgrade-base.png')
-    this.load.image('cursor', 'src/assets/cursor.png')
-    */
+    this.load.image('enemyFighter', '/src/assets/enemy-fighter.png');
+    this.load.image('upgrade', '/src/assets/upgrade-base.png')
+    this.load.image('cursor', '/src/assets/cursor.png')
+    
   }
 
   create() {
@@ -135,8 +124,7 @@ class MainGameScene extends Phaser.Scene {
 
       angleToPointer = 0
     
-      //this.input.setDefaultCursor(`url(src/assets/cursor.png) ${cursorWidth/2} ${cursorHeight/2}, pointer`);
-      this.input.setDefaultCursor(`url(/assets/cursor.png) ${cursorWidth/2} ${cursorHeight/2}, pointer`);
+      this.input.setDefaultCursor(`url(/src/assets/cursor.png) ${cursorWidth/2} ${cursorHeight/2}, pointer`);
     
       player.setAlpha(1)
       // Create player ship
