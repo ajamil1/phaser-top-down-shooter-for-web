@@ -433,7 +433,7 @@ class MainGameScene extends Phaser.Scene {
       if(frames >= 300){
         spawndashLine(player.rotation/2 + - Math.PI / 2)
       }
-      if (frames % spawnRate == 0 && frames >= 1600) {getEnemy()}
+      if (frames % spawnRate == 0 && frames >= 5000) {getEnemy()}
       
     }
     
@@ -1517,7 +1517,7 @@ const config = {
       fixedStep: false,
       fps: 144,          // Sets the physics update rate to 60 FPS
       timeStep: 1 / 144,  // Defines the fixed timestep as 1/60 seconds (60Hz)
-      debug: false       // Enable this to visualize physics objects (optional)
+      debug: true       // Enable this to visualize physics objects (optional)
     }
   },
   fps: {
