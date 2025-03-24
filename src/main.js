@@ -243,28 +243,34 @@ class MainGameScene extends Phaser.Scene {
     })
     
     bulletBasicEnemyOverlap = this.physics.add.overlap(basicEnemies, bullets, function hitBasicEnemy(enemy, bullet) {
+      console.log("COLLISION: enemy + bullet")
       enemy.hit(bullet)
     })
 
     bulletEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, bullets, function hitEnemyFighter(enemy, bullet) {
+      console.log("COLLISION: enemy + bullet")
       enemy.hit(bullet)
     })
     
     arcBasicEnemyOverlap = this.physics.add.overlap(basicEnemies, arcs, function hitBasicEnemy(enemy, arc) {
+      console.log("COLLISION: enemy + arc")
       enemy.hit(arc)
     })
     
     playerBasicEnemyCollision = this.physics.add.collider(basicEnemies, player, function hitBasicEnemy(player, enemy) {
+      console.log("COLLISION: player + enemy")
       enemy.hit(player)
     })
 
     basicEnemyFighterCollision = this.physics.add.collider(basicEnemies, enemyFighters)
 
     playerEnemyBulletOverlap = this.physics.add.overlap(enemyBullets, player, function hitPlayer(player, bullet) {
+      console.log("COLLISION: player. + bullet")
       bullet.hit()
     })
 
     playerEnemyFighterCollision = this.physics.add.collider(enemyFighters, player, function hitEnemyFighter(player, enemy) {
+      console.log("COLLISION: player + enemy")
       enemy.hit(player)
     })
 
