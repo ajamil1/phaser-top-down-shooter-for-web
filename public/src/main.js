@@ -8,13 +8,13 @@ import {
 
 // Define the Bullet class first
 
-class MainMenuScene extends Phaser.Scene {
+export class MainMenuScene extends Phaser.Scene {
   constructor() {
       super({ key: 'MainMenuScene' });  // Unique key for this scene
   }
 
   preload() {
-
+    
     this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
     this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
     this.load.image('background', '/src/assets/tiled-bg.png');
@@ -25,12 +25,23 @@ class MainMenuScene extends Phaser.Scene {
     this.load.image('dashLine', '/src/assets/dash-line.png');
     this.load.image('basicEnemy', '/src/assets/basic-enemy.png')
     this.load.image('enemyFighter', '/src/assets/enemy-fighter.png');
-    this.load.image('weapon', '/src/assets/upgrade-base.png')
+    //this.load.image('weapon', '/src/assets/upgrade-base.png')
+    this.load.spritesheet('weapon', '/src/assets/weapons.png', {
+      frameWidth: 63,
+      frameHeight: 63,
+      margin: 0,
+      spacing: 0
+    });
+    // this.load.spritesheet(key, url, frameConfig, xhrSettings);
+    this.load.image('pistol', '/src/assets/pistol.png')
     this.load.image('cursor', '/src/assets/cursor.png')
     
+    
+
   }
 
   create() {
+    
     player = this.physics.add.sprite(0, 0, 'playerShip');
       player.setCollideWorldBounds(false);  // Stop player from moving out of bounds
       player.setDamping(true);
@@ -100,7 +111,7 @@ class MainMenuScene extends Phaser.Scene {
   }
 }
 
-class MainGameScene extends Phaser.Scene {
+export class MainGameScene extends Phaser.Scene {
   constructor() {
       super({ key: 'MainGameScene' });
   }
@@ -211,7 +222,6 @@ class MainGameScene extends Phaser.Scene {
     this.time.delayedCall(50, () => {
       console.log("5")
       bulletEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, bullets, function hitEnemyFighter(enemy, bullet) {
-      console.log("COLLISION: enemy + bullet")
       enemy.hit(bullet)
     })
     })
@@ -220,18 +230,13 @@ class MainGameScene extends Phaser.Scene {
     this.time.delayedCall(50, () => {
       console.log("9")
       playerEnemyBulletOverlap = this.physics.add.overlap(enemyBullets, player, function hitPlayer(player, bullet) {
-      console.log("COLLISION: player. + bullet")
       bullet.hit()
     })
     })
 
-    
-
-    
     this.time.delayedCall(50, () => {
       console.log("10")
      playerEnemyFighterCollision = this.physics.add.collider(enemyFighters, player, function hitEnemyFighter(player, enemy) {
-      console.log("COLLISION: player + enemy")
       enemy.hit(player)
     })
     })
@@ -492,6 +497,8 @@ export let upgrade= {
   vision: 50,
   bulletspeed: 0,
 }
+
+
 export let enemyFighterCollision
 export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
@@ -518,7 +525,7 @@ let player_speed = 1800
 let frames = 0
 let maxVelocity = 700 + upgrade.speed
 let enemyBullets
-let spawnRate = 800
+let spawnRate = 100
 
 function getFacingPosition(player, distance) {
 
@@ -606,10 +613,10 @@ function shootBullet(rotation) {
       break
     case "shotgun":
       if ( weapon.ammo > 0) {
-        for (let i = 0; i <= 8; i++) {
+        for (let i = 0; i <= 12; i++) {
           const bullet = bullets.get(player.x, player.y);
           console.log(player.x)
-          bullet.fire(rotation, player.x, player.y, 1500, 3000, 0.07, 0.3);
+          bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2);
           weapon.ammo++
         }
       }
@@ -630,9 +637,13 @@ function shootBullet(rotation) {
     } 
   }
 
-  export function spawnWeapon(x,y,p) {
-    const weapon = weapons.get(player.x,player.y);
-    if (weapon) {
-      weapon.spawn(x,y,p)
+  export function spawnWeapon(x,y) {
+    let roll = Phaser.Math.Between(1, 10)
+    if (roll <= 1) {
+      const weapon = weapons.get(player.x,player.y);
+      if (weapon) {
+        weapon.spawn(x,y)
+      }
     }
+    
   }

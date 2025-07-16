@@ -1,8 +1,11 @@
 import {
     player, 
     spawnWeapon,
-    upgrade, weapon
+    upgrade, weapon,
+    MainGameScene, MainMenuScene
 } from './main'
+
+import Phaser from 'phaser'
 
 export class dashLine extends Phaser.Physics.Arcade.Sprite{
   constructor(scene, x, y) {
@@ -92,25 +95,25 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite{
     this.setActive(false);
     this.setVisible(false);
     this.speed = 0
-    this.setScale(1)
-    this.lifespan =0
+    this.setScale(2)
+    this.lifespan = 0
     this.id = Phaser.Math.Between(0,2);
   }
 
 
-  tintColor() {
+  sprite() {
     let shotgun = 0xff0000;
     let pistol = 0x002eff;
     let assaultRifle = 0xed00ff
     switch(this.id) {
       case 0: // spread
-        this.setTint(shotgun)
+        this.setFrame(0)
         break
       case 1: // firerate
-        this.setTint(pistol)
+       this.setFrame(1)
         break;
       case 2: // firerate
-        this.setTint(assaultRifle)
+        this.setFrame(2)
         break;
       default:
         this.setTint(0xed00ff)
@@ -119,9 +122,10 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite{
     return
   }
 
-  spawn(x,y,p){
+  spawn(x,y){
+    
     this.body.setCircle(this.body.width/2);
-    this.tintColor();
+    this.sprite();
     this.lifespan = 500
     this.setActive(true);
     this.setVisible(true);
@@ -380,8 +384,6 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.body.velocity.x = this.body.velocity.x/1.01;
     this.body.velocity.y = this.body.velocity.y/1.01;
     this.scaleX -= 0.04
-
-    console.log(((Math.abs(this.body.velocity.x))/700))
       
     if (this.scaleX <= 0.1) {
       this.setActive(false)
