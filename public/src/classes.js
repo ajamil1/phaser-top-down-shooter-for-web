@@ -330,7 +330,8 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.setScale(4,1)
   }
 
-  async fire(rotation, x, y, range_min, range_max, spread_min, spread_max) {
+  async fire(rotation, x, y, range_min, range_max, spread_min, spread_max, spawn_offset) {
+    this.body.setCircle(5,5, this.body.width/2);
     this.scaleX = 3.5
     this.scaleY = 0.5
     this.lifespan = frames + 10
@@ -350,7 +351,7 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
       this.setBounce(1)
   
       const bulletSpawnOffset = {
-        x: 10,
+        x: spawn_offset,
         y: 0,
       };
   

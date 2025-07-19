@@ -18,7 +18,18 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
     this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
     this.load.image('background', '/src/assets/tiled-bg.png');
-    this.load.image('playerShip', '/src/assets/player.png');
+    this.load.spritesheet('legs', '/src/assets/player-walk.png', {
+      frameWidth: 49,
+      frameHeight: 49,
+      margin: 1,
+      spacing: 0
+    });
+    this.load.spritesheet('player', '/src/assets/player-sprites.png', {
+      frameWidth: 49,
+      frameHeight: 49,
+      margin: 1,
+      spacing: 0
+    });
     this.load.image('enemyBullet', '/src/assets/bullet.png'); 
     this.load.image('bullet', '/src/assets/bullet2.png'); 
     this.load.image('arc', '/src/assets/bullet.png'); 
@@ -41,8 +52,16 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
+
+    this.anims.create({
+      key: "walk",
+      frames: this.anims.generateFrameNumbers("legs", {frames:[0,1,2,3,4,5,6,7,8,9,10]}),
+      frameRate: 12,
+      repeat: -1
+    })
     
-    player = this.physics.add.sprite(0, 0, 'playerShip');
+    
+    player = this.physics.add.sprite(0, 0, 'player');
       player.setCollideWorldBounds(false);  // Stop player from moving out of bounds
       player.setDamping(true);
       player.setDrag(0.2 );  // Simulates space friction
@@ -50,7 +69,7 @@ export class MainMenuScene extends Phaser.Scene {
       player.setBounce(1.3)
       player.setPosition(0,0)
       player.setAlpha(0)
-      player.body.setCircle((player.body.width*1.3)/2);
+      //player.body.setCircle((player.body.width*1.3)/2);
     const camera = this.cameras.main;
 
     let width = this.cameras.main.width;
@@ -131,8 +150,22 @@ export class MainGameScene extends Phaser.Scene {
       this.input.setDefaultCursor(`url(/src/assets/cursor.png) ${cursorWidth/2} ${cursorHeight/2}, pointer`);
     
       player.setAlpha(1)
-      // Create player ship
-      player = this.physics.add.sprite(0, 0, 'playerShip');
+      legs = this.physics.add.sprite(0,0, "player")
+      legs.setDepth(0)
+      player = this.physics.add.sprite(0, 0, 'player');
+      player.setDepth(1)
+
+      this.background = this.add.tileSprite(-1000, -1000, 2000, 2000, 'background');
+      this.background.setOrigin(0, 0);
+      
+
+      this.anims.create({
+      key: "walk",
+      frames: this.anims.generateFrameNumbers("player", {frames:[0,1,2,3,4,5,6,7,8,9,10]}),
+      frameRate: 15,
+      repeat: -1
+    })
+    
       player.setCollideWorldBounds(false);  // Stop player from moving out of bounds
       player.setDamping(true);
       player.setDrag(0.0001 );  // Simulates space friction
@@ -140,7 +173,20 @@ export class MainGameScene extends Phaser.Scene {
       player.setBounce(1.3)
       player.x = 0
       player.y = 0
-      player.body.setCircle((player.body.width*1.3)/2);
+      player.body.setCircle(12,12, (player.body.width*0.5)/2);
+      player.setScale(3)
+
+      legs = this.physics.add.sprite(0,0, "player")
+
+      legs.setCollideWorldBounds(false);  // Stop player from moving out of bounds
+      legs.setDamping(true);
+      legs.setDrag(0.0001 );  // Simulates space friction
+      legs.setMaxVelocity(maxVelocity);
+      legs.setBounce(1.3)
+      legs.x = 0
+      legs.y = 0
+      player.body.setCircle(12,12, (player.body.width*0.5)/2);
+      legs.setScale(3)
 
       cursor = this.physics.add.sprite(0, 0, 'cursor');
       cursor.setTintFill(0xffffff);
@@ -194,17 +240,20 @@ export class MainGameScene extends Phaser.Scene {
           weapon.type = "pistol"
           weapon.ammo = 9
           weapon.firemode = "semi"
+          player.setFrame(1)
           break;
         case 1:
           weapon.type = "shotgun"
           weapon.ammo = 5
           weapon.firemode = "semi"
+          player.setFrame(3)
           break;
         case 2:
           weapon.type = "ar"
           weapon.ammo = 25
           weapon.firemode = "auto"
           weapon.firerate = 150
+          player.setFrame(2)
           break;
         default:
           break;
@@ -237,6 +286,7 @@ export class MainGameScene extends Phaser.Scene {
     this.time.delayedCall(50, () => {
       console.log("10")
      playerEnemyFighterCollision = this.physics.add.collider(enemyFighters, player, function hitEnemyFighter(player, enemy) {
+      
       enemy.hit(player)
     })
     })
@@ -315,6 +365,8 @@ export class MainGameScene extends Phaser.Scene {
             this.handleGamepadInput(gamepad, delta);
         }
     }
+
+
       
       const pointer = this.input.mousePointer;
       let pointerX = pointer.worldX;
@@ -396,18 +448,34 @@ export class MainGameScene extends Phaser.Scene {
       if (this.d.isDown) direction.x += 1
       else direction.x -= 0 
 
+      legs.x = player.x
+      legs.y = player.y
+
   if (direction.lengthSq() > 0) {
     direction.normalize();
   }
 
       if ( this.w.isDown || this.a.isDown || this.s.isDown || this.d.isDown) {
+        legs.play("walk", true)
         player_acceleration = 10000 + upgrade.acceleration
         moveToPointer = true
+
+        const vx = player.body.velocity.x;
+        const vy = player.body.velocity.y;
+
+        if (vx !== 0 || vy !== 0) {
+          legs.rotation = Math.atan2(vy, vx) + Phaser.Math.DegToRad(90);
+        }
+
         player.body.acceleration.x = direction.x * player_acceleration;
         player.body.acceleration.y = direction.y * player_acceleration;
+    
       }
       else {
+        legs.play("walk", false)
+        legs.setFrame(11)
         player.body.setAcceleration(0, 0);
+        legs.body.setAcceleration(0, 0);
       }
     
       const velocity = (Math.abs(player.body.velocity.x)+Math.abs(player.body.velocity.y))
@@ -447,7 +515,7 @@ const config = {
   width: window.innerWidth,
   height: window.innerHeight,
     
-  backgroundColor: '#000000',
+  backgroundColor: '#ff0037',
   physics: {
     default: 'arcade',        
     arcade: {
@@ -506,6 +574,7 @@ export let playerEnemyBulletOverlap
 let cursor;
 let angleToPointer
 let cursorDistance
+let legs
 let pad;
 let xAxis
 let yAxis
@@ -607,7 +676,7 @@ function shootBullet(rotation) {
       if ( weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
         console.log(player.x)
-        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09);
+        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100);
         weapon.ammo++
       }
       break
@@ -616,7 +685,7 @@ function shootBullet(rotation) {
         for (let i = 0; i <= 12; i++) {
           const bullet = bullets.get(player.x, player.y);
           console.log(player.x)
-          bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2);
+          bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80);
           weapon.ammo++
         }
       }
@@ -626,7 +695,7 @@ function shootBullet(rotation) {
         if ( weapon.ammo > 0) {
           const bullet = bullets.get(player.x, player.y);
           console.log(player.x)
-          bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09);
+          bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80);
           weapon.ammo++
         }
       }
