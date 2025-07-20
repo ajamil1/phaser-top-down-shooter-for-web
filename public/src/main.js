@@ -27,7 +27,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.spritesheet('player', '/src/assets/player-sprites.png', {
       frameWidth: 49,
       frameHeight: 49,
-      margin: 1,
+      margin: 0,
       spacing: 0
     });
     this.load.image('enemyBullet', '/src/assets/bullet.png'); 
@@ -58,6 +58,13 @@ export class MainMenuScene extends Phaser.Scene {
       frames: this.anims.generateFrameNumbers("legs", {frames:[0,1,2,3,4,5,6,7,8,9,10]}),
       frameRate: 12,
       repeat: -1
+    })
+
+    this.anims.create({
+      key: "melee",
+      frames: this.anims.generateFrameNumbers("player", {frames:[0,1,2,3,4,5,6,7,8]}),
+      frameRate: 24,
+      repeat: 0
     })
     
     
@@ -240,22 +247,27 @@ export class MainGameScene extends Phaser.Scene {
           weapon.type = "pistol"
           weapon.ammo = 9
           weapon.firemode = "semi"
-          player.setFrame(1)
+          player.setFrame(9)
           break;
         case 1:
           weapon.type = "shotgun"
           weapon.ammo = 5
           weapon.firemode = "semi"
-          player.setFrame(3)
+          player.setFrame(11)
           break;
         case 2:
           weapon.type = "ar"
           weapon.ammo = 25
           weapon.firemode = "auto"
           weapon.firerate = 150
-          player.setFrame(2)
+          player.setFrame(10)
           break;
         default:
+          weapon.type = "none"
+          weapon.ammo = 25
+          weapon.firemode = "auto"
+          weapon.firerate = 150
+          player.setFrame(0)
           break;
       }
     
@@ -313,6 +325,9 @@ export class MainGameScene extends Phaser.Scene {
         if (pointer.leftButtonDown() && weapon.firemode == "semi") {
           shootBullet(player.rotation);
         } 
+        if (pointer.leftButtonDown() && weapon.type == "none") {
+          player.play("melee", true)
+        }
       });
     
       this.input.on(`pointermove`, (pointer) => {
@@ -332,6 +347,11 @@ export class MainGameScene extends Phaser.Scene {
       this.input.on('pointerup', (pointer) => {
         if (!pointer.leftButtonDown()) {
           shooting = false
+        }
+        if (!pointer.leftButtonDown() && weapon.type == "none") {
+          
+          player.setFrame(0)
+          console.log("UP")
         }
       });
     
@@ -548,7 +568,7 @@ window.addEventListener('resize', () => {
 
 export let player;
 export let weapon = {
-  type: "pistol",
+  type: "none",
   firemode: "semi",
   firerate: 90,
   ammo: 4,
@@ -670,12 +690,12 @@ function spawndashLine() {
 }
 
 function shootBullet(rotation) {
-  console.log(weapon.type)
+
   switch(weapon.type){
     case "pistol":
       if ( weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
-        console.log(player.x)
+
         bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100);
         weapon.ammo++
       }
@@ -684,7 +704,7 @@ function shootBullet(rotation) {
       if ( weapon.ammo > 0) {
         for (let i = 0; i <= 12; i++) {
           const bullet = bullets.get(player.x, player.y);
-          console.log(player.x)
+
           bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80);
           weapon.ammo++
         }
@@ -694,7 +714,7 @@ function shootBullet(rotation) {
       if ( weapon.ammo > 0) {
         if ( weapon.ammo > 0) {
           const bullet = bullets.get(player.x, player.y);
-          console.log(player.x)
+
           bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80);
           weapon.ammo++
         }
