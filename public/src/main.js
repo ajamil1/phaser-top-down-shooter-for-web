@@ -55,15 +55,22 @@ export class MainMenuScene extends Phaser.Scene {
 
     this.anims.create({
       key: "walk",
-      frames: this.anims.generateFrameNumbers("legs", {frames:[0,1,2,3,4,5,6,7,8,9,10]}),
+      frames: this.anims.generateFrameNumbers("legs", {frames:[0,1,2,3,4,5,6,7,8,9,10,11]}),
       frameRate: 12,
       repeat: -1
     })
 
     this.anims.create({
-      key: "melee",
-      frames: this.anims.generateFrameNumbers("player", {frames:[0,1,2,3,4,5,6,7,8]}),
-      frameRate: 24,
+      key: "left-punch",
+      frames: this.anims.generateFrameNumbers("player", {frames:[2,1,1,0]}),
+      frameRate: 12,
+      repeat: 0
+    })
+
+    this.anims.create({
+      key: "right-punch",
+      frames: this.anims.generateFrameNumbers("player", {frames:[4,3,3,0]}),
+      frameRate: 12,
       repeat: 0
     })
     
@@ -247,20 +254,20 @@ export class MainGameScene extends Phaser.Scene {
           weapon.type = "pistol"
           weapon.ammo = 9
           weapon.firemode = "semi"
-          player.setFrame(9)
+          player.setFrame(5)
           break;
         case 1:
           weapon.type = "shotgun"
           weapon.ammo = 5
           weapon.firemode = "semi"
-          player.setFrame(11)
+          player.setFrame(7)
           break;
         case 2:
           weapon.type = "ar"
           weapon.ammo = 25
           weapon.firemode = "auto"
           weapon.firerate = 150
-          player.setFrame(10)
+          player.setFrame(6)
           break;
         default:
           weapon.type = "none"
@@ -319,14 +326,32 @@ export class MainGameScene extends Phaser.Scene {
             } 
           }
         });
-      
+    
       this.input.on('pointerdown', (pointer) => {
+        console.log(player.anims.currentAnim?.key)
         shooting = true
         if (pointer.leftButtonDown() && weapon.firemode == "semi") {
           shootBullet(player.rotation);
         } 
-        if (pointer.leftButtonDown() && weapon.type == "none") {
-          player.play("melee", true)
+        if (pointer.leftButtonDown() && weapon.type == "none" ) {
+          switch(meleeFrame){    
+            case 0:  
+              if (player.anims.currentAnim?.key !== 'left-punch') {
+                meleeComplete = false
+                player.setFrame(0) 
+                player.play("left-punch", true) 
+                meleeFrame = 1
+              }                     
+              break
+            case 1:
+              if (player.anims.currentAnim?.key !== 'right-punch') {
+                meleeComplete = false
+                player.setFrame(0)
+                player.play("right-punch", true) 
+                meleeFrame = 0
+              }
+              break     
+          }
         }
       });
     
@@ -350,7 +375,6 @@ export class MainGameScene extends Phaser.Scene {
         }
         if (!pointer.leftButtonDown() && weapon.type == "none") {
           
-          player.setFrame(0)
           console.log("UP")
         }
       });
@@ -367,6 +391,7 @@ export class MainGameScene extends Phaser.Scene {
     //frames = frames + (Math.ceil(time/100000))
     frames++
     //console.log(delta)
+
     if (delta > 10) {
       this.physics.world.smoothStep = false;  // Disable smoothStep
   } else {
@@ -386,8 +411,6 @@ export class MainGameScene extends Phaser.Scene {
         }
     }
 
-
-      
       const pointer = this.input.mousePointer;
       let pointerX = pointer.worldX;
       let pointerY = pointer.worldY;
@@ -585,6 +608,9 @@ export let upgrade= {
   vision: 50,
   bulletspeed: 0,
 }
+
+let meleeFrame = 0
+let meleeComplete = true
 
 
 export let enemyFighterCollision
