@@ -63,14 +63,14 @@ export class MainMenuScene extends Phaser.Scene {
     this.anims.create({
       key: "left-punch",
       frames: this.anims.generateFrameNumbers("player", {frames:[2,1,1,0]}),
-      frameRate: 12,
+      frameRate: 8,
       repeat: 0
     })
 
     this.anims.create({
       key: "right-punch",
       frames: this.anims.generateFrameNumbers("player", {frames:[4,3,3,0]}),
-      frameRate: 12,
+      frameRate: 8,
       repeat: 0
     })
     
@@ -130,7 +130,7 @@ export class MainMenuScene extends Phaser.Scene {
     const pointer = this.input.mousePointer;
       let pointerX = pointer.worldX/6;
       let pointerY = pointer.worldY/6;
-    let midX = (player.x + pointerX) / 2;
+      let midX = (player.x + pointerX) / 2;
       let midY = (player.y + pointerY) / 2;
     
       const camera = this.cameras.main;
@@ -187,7 +187,8 @@ export class MainGameScene extends Phaser.Scene {
       player.setBounce(1.3)
       player.x = 0
       player.y = 0
-      player.body.setCircle(12,12, (player.body.width*0.5)/2);
+      player.body.setCircle(12);
+      player.body.setOffset(player.width / 2 - 12, player.height / 2 - 12)
       player.setScale(3)
 
       legs = this.physics.add.sprite(0,0, "player")
@@ -199,8 +200,19 @@ export class MainGameScene extends Phaser.Scene {
       legs.setBounce(1.3)
       legs.x = 0
       legs.y = 0
-      player.body.setCircle(12,12, (player.body.width*0.5)/2);
       legs.setScale(3)
+
+      meleeHitbox = this.physics.add.sprite(player.x, player.y, null);
+      meleeHitbox.body.setCircle(30);
+      meleeHitbox.body.setOffset(meleeHitbox.width / 2 - 30, meleeHitbox.height / 2 - 30)
+      meleeHitbox.setCollideWorldBounds(false);  // Stop player from moving out of bounds
+      meleeHitbox.setDamping(false);
+      meleeHitbox.setDrag(0);  // Simulates space friction
+      meleeHitbox.setMaxVelocity(maxVelocity);
+      meleeHitbox.setBounce(1.3)
+      meleeHitbox.setVisible(false); // Invisible
+      meleeHitbox.setActive(false)
+      meleeHitbox.body.checkCollision.none = true;
 
       cursor = this.physics.add.sprite(0, 0, 'cursor');
       cursor.setTintFill(0xffffff);
@@ -228,7 +240,7 @@ export class MainGameScene extends Phaser.Scene {
 
       enemyFighters =  this.physics.add.group({
         classType: EnemyFighter,
-        maxSize: 200,
+        maxSize: 5,
         runChildUpdate: true,
       });
     
@@ -247,7 +259,7 @@ export class MainGameScene extends Phaser.Scene {
     
     this.time.delayedCall(50, () => {
       console.log("3")
-      let obtainWeapon = this.physics.add.overlap(player, weapons, function collectWeapon(player, weaponObj) {
+      obtainWeapon = this.physics.add.overlap(player, weapons, function collectWeapon(player, weaponObj) {
       obtainWeapon.active = false
       switch(weaponObj.id){
         case 0:
@@ -293,8 +305,7 @@ export class MainGameScene extends Phaser.Scene {
       enemy.hit(bullet)
     })
     })
-    
-    
+
     this.time.delayedCall(50, () => {
       console.log("9")
       playerEnemyBulletOverlap = this.physics.add.overlap(enemyBullets, player, function hitPlayer(player, bullet) {
@@ -305,8 +316,20 @@ export class MainGameScene extends Phaser.Scene {
     this.time.delayedCall(50, () => {
       console.log("10")
      playerEnemyFighterCollision = this.physics.add.collider(enemyFighters, player, function hitEnemyFighter(player, enemy) {
-      
       enemy.hit(player)
+    })
+    })
+
+    this.time.delayedCall(50, () => {
+      console.log("12")
+      meleeHitboxEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, meleeHitbox, function hitEnemyFighter(meleeHitbox, enemy) {
+      try{
+        //console.log(meleeHitbox.constructor.name);
+        enemy.hit(meleeHitbox)
+      }
+      catch(e) {
+        console.log(e)
+      }
     })
     })
     
@@ -328,7 +351,7 @@ export class MainGameScene extends Phaser.Scene {
         });
     
       this.input.on('pointerdown', (pointer) => {
-        console.log(player.anims.currentAnim?.key)
+
         shooting = true
         if (pointer.leftButtonDown() && weapon.firemode == "semi") {
           shootBullet(player.rotation);
@@ -337,14 +360,16 @@ export class MainGameScene extends Phaser.Scene {
           switch(meleeFrame){    
             case 0:  
               if (player.anims.currentAnim?.key !== 'left-punch') {
-                meleeComplete = false
-                player.setFrame(0) 
+                meleeHitbox.body.checkCollision.none = false
+                meleeComplete = false     
+                player.setFrame(0)          
                 player.play("left-punch", true) 
                 meleeFrame = 1
               }                     
               break
             case 1:
               if (player.anims.currentAnim?.key !== 'right-punch') {
+                meleeHitbox.body.checkCollision.none = false
                 meleeComplete = false
                 player.setFrame(0)
                 player.play("right-punch", true) 
@@ -352,6 +377,18 @@ export class MainGameScene extends Phaser.Scene {
               }
               break     
           }
+        }
+        
+      });
+
+      player.on('animationcomplete', (animation, frame) => {
+        if (animation.key != "left-punch" && animation.key != "right-punch" && weapon.type != "none"){
+          setWeapon(weapon.type)
+          meleeHitbox.body.checkCollision.none = true;
+        } else if (animation.key == "left-punch" || animation.key == "right-punch"){
+          console.log(animation.key)
+          setWeapon(weapon.type)
+          meleeHitbox.body.checkCollision.none = true;
         }
       });
     
@@ -370,12 +407,15 @@ export class MainGameScene extends Phaser.Scene {
       })
     
       this.input.on('pointerup', (pointer) => {
+        if (weapon.type != "none") {
+          setWeapon(weapon.type)
+        }
         if (!pointer.leftButtonDown()) {
           shooting = false
         }
         if (!pointer.leftButtonDown() && weapon.type == "none") {
           
-          console.log("UP")
+          //console.log("UP")
         }
       });
     
@@ -390,7 +430,18 @@ export class MainGameScene extends Phaser.Scene {
   update(time, delta) {
     //frames = frames + (Math.ceil(time/100000))
     frames++
+    console.log(meleeHitbox.body.checkCollision.none)
     //console.log(delta)
+
+    if (player.anims.isPlaying) {
+      //console.log(player.anims.currentAnim?.key)
+      meleeHitbox.setActive(true)
+      meleeHitbox.x = meleeHitbox.x + 1
+      meleeHitbox.y = meleeHitbox.y + 1
+      
+    } else if (!player.anims.isPlaying) {
+      meleeHitbox.setActive(false)
+    }
 
     if (delta > 10) {
       this.physics.world.smoothStep = false;  // Disable smoothStep
@@ -442,6 +493,7 @@ export class MainGameScene extends Phaser.Scene {
       else {
         targetX = Phaser.Math.Linear(cursor.x, getFacingPosition(player, cursorDistance).x, movementSmoothFactor);
         targetY = Phaser.Math.Linear(cursor.y, getFacingPosition(player, cursorDistance).y, movementSmoothFactor);
+
       }
       
     
@@ -457,6 +509,15 @@ export class MainGameScene extends Phaser.Scene {
           targetX = centerX + Math.cos(angle) * (maxRadius);
           targetY = centerY + Math.sin(angle) * (maxRadius);
           
+          
+      }
+
+      if (distance > 0) {
+
+        var angle = Phaser.Math.Angle.Between(centerX, centerY, targetX, targetY);
+
+        meleeX = centerX + Math.cos(angle) * (40);
+        meleeY = centerY + Math.sin(angle) * (40);
       }
     
       let midX = (player.x + cursor.x) / 2;
@@ -464,6 +525,8 @@ export class MainGameScene extends Phaser.Scene {
     
       cursor.x = targetX
       cursor.y = targetY
+      meleeHitbox.x = meleeX
+      meleeHitbox.y = meleeY
     
       if (cursorMoving == true) {
         angleToPointer = Phaser.Math.Angle.Between(player.x, player.y, cursor.x, cursor.y);
@@ -566,7 +629,7 @@ const config = {
       fixedStep: false,
       fps: 144,          // Sets the physics update rate to 60 FPS
       timeStep: 1 / 144,  // Defines the fixed timestep as 1/60 seconds (60Hz)
-      debug: false       // Enable this to visualize physics objects (optional)
+      debug: true      // Enable this to visualize physics objects (optional)
     }
   },
   fps: {
@@ -611,12 +674,16 @@ export let upgrade= {
 
 let meleeFrame = 0
 let meleeComplete = true
-
+let meleeHitbox
+let meleeX
+let meleeY
 
 export let enemyFighterCollision
 export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
 export let playerEnemyBulletOverlap
+export let meleeHitboxEnemyFighterOverlap
+let obtainWeapon
 let cursor;
 let angleToPointer
 let cursorDistance
@@ -715,6 +782,24 @@ function spawndashLine() {
   }
 }
 
+function setWeapon(id){
+  console.log(id)
+  switch(id){
+        case "pistol":
+          player.setFrame(5)
+          break;
+        case "ar":
+          player.setFrame(6)
+          break;
+        case "shotgun":
+          player.setFrame(7)
+          break;
+        default:
+          player.setFrame(0)
+          break;
+      }
+}
+
 function shootBullet(rotation) {
 
   switch(weapon.type){
@@ -747,7 +832,7 @@ function shootBullet(rotation) {
       }
       break
     default:
-      console.log("NO AMMO")
+      //console.log("NO AMMO")
       break
     } 
   }

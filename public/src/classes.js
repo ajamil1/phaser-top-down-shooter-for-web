@@ -182,6 +182,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     let object = that.constructor.name
     switch(object) {
       case "Bullet":
+        console.log("p")
         if(that.visible == false) {
           return
          }
@@ -213,7 +214,32 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
           this.clearTint()
         }, 50);
         break;
-      
+      case "ArcadeSprite2":
+        setTimeout(async () => {
+          that.body.checkCollision.none = true;
+          this.health = this.health - 1
+          if (this.health <= 0) {
+            this.setTintFill(0xff0051);
+             if (this.death == false) {
+              await spawnWeapon(this.x, this.y, this.power)
+             }
+             this.death = true
+              that.body.checkCollision.none = false;
+          }
+          else {
+            this.setTintFill(0xffffff);
+          }
+        },5);
+        setTimeout(async () => { 
+          if (this.health <= 0){
+           //await this.spawn(player.x,player.y,8000)
+           this.setActive(false)
+           this.setVisible(false)
+           this.body.checkCollision.none = true;
+          }
+          this.clearTint()
+        }, 50);
+        break;
       default:
         this.health--
         player.setTint(0xff0051)
@@ -234,6 +260,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
             player.clearTint()
           }, 50);
         break;
+        
     }
     return
       
