@@ -120,7 +120,7 @@ export class MainMenuScene extends Phaser.Scene {
           })
           dashLines = this.physics.add.group({
             classType: dashLine,
-            maxSize: 1000, // Adjust the max size as needed
+            maxSize: 100, // Adjust the max size as needed
             runChildUpdate: true,
           });
   }
@@ -629,7 +629,7 @@ const config = {
       fixedStep: false,
       fps: 144,          // Sets the physics update rate to 60 FPS
       timeStep: 1 / 144,  // Defines the fixed timestep as 1/60 seconds (60Hz)
-      debug: true      // Enable this to visualize physics objects (optional)
+      debug: false      // Enable this to visualize physics objects (optional)
     }
   },
   fps: {
