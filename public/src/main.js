@@ -240,7 +240,7 @@ export class MainGameScene extends Phaser.Scene {
 
       enemyFighters =  this.physics.add.group({
         classType: EnemyFighter,
-        maxSize: 5,
+        maxSize: 20,
         runChildUpdate: true,
       });
     
@@ -514,10 +514,14 @@ export class MainGameScene extends Phaser.Scene {
 
       if (distance > 0) {
 
+        const absDiff = Math.abs(Phaser.Math.Angle.ShortestBetween(Phaser.Math.RadToDeg(player.rotation), Phaser.Math.RadToDeg(legs.rotation))); // Absolute difference
+        const scale = 1 - (absDiff / 180); // value between 0 and 1
+        console.log(scale)
+
         var angle = Phaser.Math.Angle.Between(centerX, centerY, targetX, targetY);
 
-        meleeX = centerX + Math.cos(angle) * (40);
-        meleeY = centerY + Math.sin(angle) * (40);
+        meleeX = centerX + Math.cos(angle) * (30 + (20 * scale));
+        meleeY = centerY + Math.sin(angle) * (30 + (20 * scale));
       }
     
       let midX = (player.x + cursor.x) / 2;
@@ -621,7 +625,7 @@ const config = {
   width: window.innerWidth,
   height: window.innerHeight,
     
-  backgroundColor: '#ff0037',
+  backgroundColor: '#000000',
   physics: {
     default: 'arcade',        
     arcade: {
