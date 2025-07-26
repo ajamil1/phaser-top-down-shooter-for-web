@@ -520,8 +520,8 @@ export class MainGameScene extends Phaser.Scene {
 
         var angle = Phaser.Math.Angle.Between(centerX, centerY, targetX, targetY);
 
-        meleeX = centerX + Math.cos(angle) * (30 + (20 * scale));
-        meleeY = centerY + Math.sin(angle) * (30 + (20 * scale));
+        meleeX = centerX + Math.cos(angle) * (30 + (40 * scale));
+        meleeY = centerY + Math.sin(angle) * (30 + (40 * scale));
       }
     
       let midX = (player.x + cursor.x) / 2;
@@ -633,7 +633,7 @@ const config = {
       fixedStep: false,
       fps: 144,          // Sets the physics update rate to 60 FPS
       timeStep: 1 / 144,  // Defines the fixed timestep as 1/60 seconds (60Hz)
-      debug: false      // Enable this to visualize physics objects (optional)
+      debug: false     // Enable this to visualize physics objects (optional)
     }
   },
   fps: {

@@ -126,6 +126,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite{
     
     this.body.setCircle(this.body.width/2);
     this.sprite();
+    this.rotation = Phaser.Math.FloatBetween(0, Math.PI * 2);
     this.lifespan = 500
     this.setActive(true);
     this.setVisible(true);
@@ -140,6 +141,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite{
       this.setActive(false)
       this.setVisible(false);
     }
+    this.rotation += (this.speed/100)
 
     this.x += Math.cos(angle) * this.speed;
     this.y += Math.sin(angle) * this.speed;
@@ -157,7 +159,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite{
 
 export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
   constructor(scene, x, y) {
-    super(scene, x, y, 'enemyFighter');
+    super(scene, x, y, 'player');
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setActive(false);
@@ -292,15 +294,15 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     this.setActive(true)
     this.setVisible(true)
     this.clearTint()
-    this.setScale(1);
+    this.setScale(3);
     this.acceleration = 0.1
     this.speed = Phaser.Math.Between(400, 550);
     this.rotationSpeed = Phaser.Math.FloatBetween(0.000001, 0.01);
     this.setMaxVelocity(this.speed)
     this.power= Math.floor(this.scale)
     if (this.birth == true) {
-      this.radius = this.body.width/2
-      this.body.setCircle(this.radius);
+      this.body.setCircle(12);
+      this.body.setOffset(this.width / 2 - 12, this.height / 2 - 12)
       this.birth = false
     }
     this.health = 1
@@ -323,14 +325,14 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     this.setActive(true);
     this.setVisible(true);
     let angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y );
-    this.rotation = Phaser.Math.Angle.RotateTo(this.rotation, angle, 0.01)
+    this.rotation = Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), 0.01)
   
     // Calculate the movement direction based on the object's current angle
     let radians = Phaser.Math.DegToRad(this.angle);
 
     // Apply velocity in the direction the object is facing (based on its rotation)
-    this.body.velocity.x = Math.cos(radians) * this.speed;
-    this.body.velocity.y = Math.sin(radians) * this.speed;
+    this.body.velocity.x = Math.cos(radians - (Phaser.Math.DegToRad(90))) * this.speed;
+    this.body.velocity.y = Math.sin(radians - (Phaser.Math.DegToRad(90))) * this.speed;
 
     let scan = this.sight()
     const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
