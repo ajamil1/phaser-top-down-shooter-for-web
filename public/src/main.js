@@ -3,7 +3,7 @@ import Phaser from 'phaser';
 import {
   dashLine, Weapon,  
   EnemyFighter, EnemyBullet,
-  Bullet, 
+  Bullet, Corpse
 } from './classes'
 
 // Define the Bullet class first
@@ -30,6 +30,7 @@ export class MainMenuScene extends Phaser.Scene {
       margin: 0,
       spacing: 0
     });
+
     this.load.image('enemyBullet', '/src/assets/bullet.png'); 
     this.load.image('bullet', '/src/assets/bullet2.png'); 
     this.load.image('arc', '/src/assets/bullet.png'); 
@@ -71,6 +72,13 @@ export class MainMenuScene extends Phaser.Scene {
       key: "right-punch",
       frames: this.anims.generateFrameNumbers("player", {frames:[4,3,3,0]}),
       frameRate: 8,
+      repeat: 0
+    })
+
+    this.anims.create({
+      key: "knockdown",
+      frames: this.anims.generateFrameNumbers("player", {frames:[10,11,12,12,13,14]}),
+      frameRate: 12,
       repeat: 0
     })
     
@@ -241,6 +249,12 @@ export class MainGameScene extends Phaser.Scene {
       enemyFighters =  this.physics.add.group({
         classType: EnemyFighter,
         maxSize: 20,
+        runChildUpdate: true,
+      });
+
+      corpses =  this.physics.add.group({
+        classType: Corpse,
+        maxSize: 80,
         runChildUpdate: true,
       });
     
@@ -430,7 +444,6 @@ export class MainGameScene extends Phaser.Scene {
   update(time, delta) {
     //frames = frames + (Math.ceil(time/100000))
     frames++
-    console.log(meleeHitbox.body.checkCollision.none)
     //console.log(delta)
 
     if (player.anims.isPlaying) {
@@ -516,7 +529,6 @@ export class MainGameScene extends Phaser.Scene {
 
         const absDiff = Math.abs(Phaser.Math.Angle.ShortestBetween(Phaser.Math.RadToDeg(player.rotation), Phaser.Math.RadToDeg(legs.rotation))); // Absolute difference
         const scale = 1 - (absDiff / 180); // value between 0 and 1
-        console.log(scale)
 
         var angle = Phaser.Math.Angle.Between(centerX, centerY, targetX, targetY);
 
@@ -687,6 +699,8 @@ export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
 export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
+export let enemyLegs
+export let corpses
 let obtainWeapon
 let cursor;
 let angleToPointer
@@ -703,6 +717,7 @@ let bullets;
 let weapons
 let dashLines;
 let enemyFighters
+
 let worldBounds = { width: 10000, height: 10000 };  // Large world size
 let moveToPointer = false;
 let shooting = false
@@ -759,10 +774,12 @@ function spawnEnemyFighter(){
   let reroll = Phaser.Math.Between(0,5)
   
   let enemy = enemyFighters.getFirstDead(player.x, player.y)
+  
   if (enemy){
     enemy.spawn(player.x,player.y,2000)
     enemyX = enemy.x
     enemyY = enemy.y
+
   }
     while (reroll >= 2) {
       angle = Phaser.Math.FloatBetween(0, 2 * Math.PI);
@@ -771,6 +788,7 @@ function spawnEnemyFighter(){
       posX = enemyX + offsetX;
       posY = enemyY + offsetY;
       enemy = enemyFighters.get(player.x, player.y)
+
       if (enemy){
         enemy.spawn(posX,posY,radius)
       }
@@ -850,4 +868,11 @@ function shootBullet(rotation) {
       }
     }
     
+  }
+
+  export function spawnCorpse(x,y,r,vx, vy) {
+    const corpse = corpses.get(player.x,player.y);
+      if (corpse) {
+        corpse.spawn(x,y,r,vx,vy)
+      }
   }
