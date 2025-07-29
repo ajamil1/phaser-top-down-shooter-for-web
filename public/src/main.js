@@ -14,7 +14,9 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   preload() {
-    
+
+    this.load.audio('gunshot', '/src/assets/gunshot.mp3');
+     this.load.audio('opr', '/src/assets/Gesaffelstein - Opr.mp3');
     this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
     this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
     this.load.image('background', '/src/assets/tiled-bg.png');
@@ -53,6 +55,11 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
+    gunshot = this.sound.add('gunshot', {
+      loop: false,
+      volume: 0.8,
+      allowMultiple: true
+    });
 
     this.anims.create({
       key: "walk",
@@ -161,9 +168,14 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   create() {
-      // Main game setup
-     
-        //this.add.text(400, 300, 'Main Game', { fontSize: '48px', fill: '#fff' }).setOrigin(0.5);
+      
+    opr = this.sound.add('opr', {
+      loop: true,
+      volume: 0.2,
+      allowMultiple: true
+    });
+
+    opr.play()
       const cursorWidth = 40
       const cursorHeight = 40
 
@@ -478,7 +490,7 @@ export class MainGameScene extends Phaser.Scene {
       const pointer = this.input.mousePointer;
       let pointerX = pointer.worldX;
       let pointerY = pointer.worldY;
-      const camera = this.cameras.main;
+      mainCamera = this.cameras.main;
       let centerX
       let centerY
       centerX = (player.x * 1)
@@ -554,8 +566,8 @@ export class MainGameScene extends Phaser.Scene {
         cursor.y = Phaser.Math.Clamp(targetY, player.y-cursorDistance, player.y+cursorDistance)
       }
     
-      camera.scrollX = Phaser.Math.Linear(camera.scrollX, midX - camera.width / 2, cameraSmoothFactor);
-      camera.scrollY = Phaser.Math.Linear(camera.scrollY, midY - camera.height / 2, cameraSmoothFactor);
+      mainCamera.scrollX = Phaser.Math.Linear(mainCamera.scrollX, midX - mainCamera.width / 2, cameraSmoothFactor);
+      mainCamera.scrollY = Phaser.Math.Linear(mainCamera.scrollY, midY - mainCamera.height / 2, cameraSmoothFactor);
     
       cursorMoving = false
 
@@ -701,7 +713,9 @@ export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
 export let enemyLegs
 export let corpses
+let opr
 let obtainWeapon
+let mainCamera
 let cursor;
 let angleToPointer
 let cursorDistance
@@ -717,7 +731,7 @@ let bullets;
 let weapons
 let dashLines;
 let enemyFighters
-
+let gunshot
 let worldBounds = { width: 10000, height: 10000 };  // Large world size
 let moveToPointer = false;
 let shooting = false
@@ -823,23 +837,31 @@ function setWeapon(id){
 }
 
 function shootBullet(rotation) {
+  let random = Phaser.Math.Between(-100, 100);
 
   switch(weapon.type){
     case "pistol":
       if ( weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
-
+        gunshot.play()
         bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100);
+        
+        mainCamera.shake(100, 0.002);
         weapon.ammo++
+        
+        gunshot.setDetune(random);
       }
       break
     case "shotgun":
       if ( weapon.ammo > 0) {
         for (let i = 0; i <= 12; i++) {
           const bullet = bullets.get(player.x, player.y);
-
+          mainCamera.shake(100, 0.004);
+          gunshot.play()
           bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80);
           weapon.ammo++
+          
+          gunshot.setDetune(random);
         }
       }
       break
@@ -847,9 +869,12 @@ function shootBullet(rotation) {
       if ( weapon.ammo > 0) {
         if ( weapon.ammo > 0) {
           const bullet = bullets.get(player.x, player.y);
-
+          mainCamera.shake(50, 0.003);
+          gunshot.play()
           bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80);
           weapon.ammo++
+          
+          gunshot.setDetune(random);
         }
       }
       break

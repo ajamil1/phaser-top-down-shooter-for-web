@@ -233,8 +233,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
             this.legs.setActive(false)
             this.legs.setVisible(false)
             this.setTintFill(0xff0051);
-             if (this.death == false) {
-              await spawnCorpse(this.x, this.y, that.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y)
+             if (this.death == false && that != player) {
+              await spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y)
               await spawnWeapon(this.x, this.y, this.power)
              }
              this.death = true
