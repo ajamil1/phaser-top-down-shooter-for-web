@@ -16,7 +16,7 @@ export class MainMenuScene extends Phaser.Scene {
   preload() {
 
     this.load.audio('gunshot', '/src/assets/gunshot.mp3');
-     this.load.audio('opr', '/src/assets/Gesaffelstein - Opr.mp3');
+    this.load.audio('banishing', '/src/assets/Filmmaker - Great Tribulations - 01 Banishing.mp3');
     this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
     this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
     this.load.image('background', '/src/assets/tiled-bg.png');
@@ -57,7 +57,7 @@ export class MainMenuScene extends Phaser.Scene {
   create() {
     gunshot = this.sound.add('gunshot', {
       loop: false,
-      volume: 0.8,
+      volume: 0.5,
       allowMultiple: true
     });
 
@@ -169,13 +169,13 @@ export class MainGameScene extends Phaser.Scene {
 
   create() {
       
-    opr = this.sound.add('opr', {
+    banishing = this.sound.add('banishing', {
       loop: true,
-      volume: 0.2,
+      volume: 0.5,
       allowMultiple: true
     });
 
-    opr.play()
+    banishing.play()
       const cursorWidth = 40
       const cursorHeight = 40
 
@@ -713,7 +713,7 @@ export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
 export let enemyLegs
 export let corpses
-let opr
+let banishing
 let obtainWeapon
 let mainCamera
 let cursor;
