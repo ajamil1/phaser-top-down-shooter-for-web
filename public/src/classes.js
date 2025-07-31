@@ -1,7 +1,8 @@
 import {
-    player, 
-    spawnWeapon, spawnCorpse,
+    player,  
+    spawnWeapon, spawnCorpse, enemyShoot,
     upgrade, weapon,
+    bullets,
     MainGameScene, MainMenuScene
 } from './main'
 
@@ -161,6 +162,11 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
   constructor(scene, x, y) {
     super(scene, x, y, 'player');
     scene.add.existing(this);
+    this.gunshot = this.scene.sound.add('gunshot', {
+      loop: false,
+      volume: 0.5,
+      allowMultiple: true
+    })
     scene.physics.add.existing(this);
     this.legs = scene.add.sprite(this.x, this.y, "legs");
     this.legs.setOrigin(0.5);
@@ -170,6 +176,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     this.lastShotTime = Math.floor(Math.random() * (200 - 0 + 1)) + 0;
     this.shotInterval = 300; // Delay in milliseconds (e.g., 500ms)
     this.health = 0
+    this.weapon
+    this.distance = 9999
     this.speed = 0
     this.power = 1
     this.rotationSpeed = 0
@@ -180,9 +188,40 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     this.setDepth(1)
     this.setBounce(2)
     this.setDamping(true);
-    this.setDrag(0.001 );
+    this.setDrag(0.001);
     this.maxRotationSpeed = 300;
     this.angularAcceleration = 10;
+    this.loop = false;
+    this.scene.time.addEvent({
+      delay: 300,
+      callback: () => {
+        if (this.loop == true && this.weapon == 1 && this.death == false) {
+          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+        }
+      },
+      callbackScope: this,
+      loop: true
+    });
+    this.scene.time.addEvent({
+      delay: 800,
+      callback: () => {
+        if (this.loop == true && this.weapon == 2 && this.death == false) {
+          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+        }
+      },
+      callbackScope: this,
+      loop: true
+    })
+    this.scene.time.addEvent({
+      delay: 100,
+      callback: () => {
+        if (this.loop == true && this.weapon == 3 && this.death == false) {
+          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+        }
+      },
+      callbackScope: this,
+      loop: true
+    })
   }
 
   async hit(that) {
@@ -204,8 +243,10 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
             this.legs.setVisible(false)
             this.setTintFill(0xff0051);
              if (this.death == false) {
+              this.loop = false
               await spawnCorpse(this.x, this.y, that.rotation, this.body.velocity.x, this.body.velocity.y)
               await spawnWeapon(this.x, this.y, this.power)
+              
              }
              this.death = true
              
@@ -234,6 +275,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
             this.legs.setVisible(false)
             this.setTintFill(0xff0051);
              if (this.death == false && that != player) {
+              this.loop = false
               await spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y)
               await spawnWeapon(this.x, this.y, this.power)
              }
@@ -250,6 +292,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
            this.legs.setVisible(false)
            this.setActive(false)
            this.setVisible(false)
+           this.loop = false
            this.body.checkCollision.none = true;
           }
           this.clearTint()
@@ -270,6 +313,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
               this.legs.setVisible(false)
               this.setActive(false)
               this.setVisible(false)
+              this.loop = false
               this.body.checkCollision.none = true;
             }
             this.clearTint()
@@ -283,7 +327,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
   }
 
   sight() {
-
+    
     let fovAngle = Math.PI / 4
     const angleToPlayer = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
     const enemyFacing = this.rotation;
@@ -293,16 +337,28 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     return Math.abs(angleDifference) <= fovAngle;
 }
 
-  shoot() {
-    const currentTime = frames - (Math.floor(Math.random() * (200 - 0 + 1)) + 0);
-    if (currentTime - this.lastShotTime >= this.shotInterval) {
-      const bullet = enemyBullets.get(this.x, this.y);
-      bullet.fire(this.rotation + Math.PI / 2, 0.5, this.x, this.y, 0);
-      this.lastShotTime = currentTime;
+ setWeapon(weapon) {
+    switch(weapon) {
+      case 1:
+        this.setFrame(5)        
+        break
+      case 2:
+        this.setFrame(7)        
+        break
+      case 3:
+        this.setFrame(6)
+        break
+      default:
+        this.setFrame(0)
+        break
     }
-  }
+ }
+
+ 
 
   spawn(x,y,r){
+    this.loop = false
+    this.weapon = Phaser.Math.Between(0,30)
     this.death = false
     this.body.checkCollision.none = false
     this.setActive(true)
@@ -329,6 +385,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     const posX = x + offsetX;
     const posY = y + offsetY;
     this.setPosition(posX, posY);
+    this.setWeapon(this.weapon)
     
   }
 
@@ -346,9 +403,11 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
     this.body.velocity.y = Math.sin(radians - (Phaser.Math.DegToRad(90))) * this.speed;
 
     let scan = this.sight()
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
+    this.distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
 
-      if (scan == true && distance <= 1000) {this.shoot()}
+    if (this.distance <= 900) {
+      this.loop = true
+    } else {this.loop = false}
   }
 }
 
@@ -406,6 +465,7 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.setActive(false);
     this.setVisible(false);
     this.body.setSize(15,15)
+    this.enemyBullet
     this.cooldown = 10
     this.frames
     this.damage 
@@ -416,8 +476,9 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.setScale(4,1)
   }
 
-  async fire(rotation, x, y, range_min, range_max, spread_min, spread_max, spawn_offset) {
+  async fire(rotation, x, y, range_min, range_max, spread_min, spread_max, spawn_offset, enemyBullet) {
     this.body.setCircle(2);
+    this.enemyBullet = enemyBullet
     this.body.setOffset(this.width / 2 - 2, this.height / 2 - 2)
     this.scaleX = 3.5
     this.scaleY = 0.5

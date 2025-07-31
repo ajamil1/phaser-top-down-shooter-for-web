@@ -88,6 +88,8 @@ export class MainMenuScene extends Phaser.Scene {
       frameRate: 12,
       repeat: 0
     })
+
+     
     
     
     player = this.physics.add.sprite(0, 0, 'player');
@@ -260,7 +262,7 @@ export class MainGameScene extends Phaser.Scene {
 
       enemyFighters =  this.physics.add.group({
         classType: EnemyFighter,
-        maxSize: 20,
+        maxSize: 30,
         runChildUpdate: true,
       });
 
@@ -332,10 +334,20 @@ export class MainGameScene extends Phaser.Scene {
     })
     })
 
-    this.time.delayedCall(50, () => {
-      console.log("9")
-      playerEnemyBulletOverlap = this.physics.add.overlap(enemyBullets, player, function hitPlayer(player, bullet) {
-      bullet.hit()
+
+     this.time.delayedCall(50, () => {
+      console.log("10")
+     playerEnemyBulletOverlap = this.physics.add.overlap(player, bullets, function hitEnemyFighter(player, bullet) {
+      bullet.setActive(false)
+      bullet.setVisible(false)
+      bullet.body.checkCollision.none = true;
+      player.setTintFill(0xff0051);
+      legs.setTintFill(0xff0051);
+      setTimeout(async () => {
+        player.clearTint()
+        legs.clearTint()
+      },50);
+        
     })
     })
 
@@ -375,7 +387,14 @@ export class MainGameScene extends Phaser.Scene {
             } 
           }
         });
-    
+
+      this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
+
+      this.input.keyboard.on('keydown-SHIFT', () => {
+        player.setMaxVelocity(maxVelocity*3);
+        player.setMaxVelocity(maxVelocity);
+      })
+     
       this.input.on('pointerdown', (pointer) => {
 
         shooting = true
@@ -467,6 +486,8 @@ export class MainGameScene extends Phaser.Scene {
     } else if (!player.anims.isPlaying) {
       meleeHitbox.setActive(false)
     }
+
+    
 
     if (delta > 10) {
       this.physics.world.smoothStep = false;  // Disable smoothStep
@@ -713,6 +734,8 @@ export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
 export let enemyLegs
 export let corpses
+export let bullets
+export let frames = 0
 let banishing
 let obtainWeapon
 let mainCamera
@@ -727,7 +750,7 @@ var maxRadius = 1000
 let lastPosition = { x: 0, y: 0 }
 let nextPosition = {x: 0, y: 0 }
 let cursorMoving
-let bullets;
+
 let weapons
 let dashLines;
 let enemyFighters
@@ -737,7 +760,7 @@ let moveToPointer = false;
 let shooting = false
 let player_acceleration = 0
 let player_speed = 1800
-let frames = 0
+
 let maxVelocity = 700 + upgrade.speed
 let enemyBullets
 let spawnRate = 100
@@ -844,7 +867,7 @@ function shootBullet(rotation) {
       if ( weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
         gunshot.play()
-        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100);
+        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100, false);
         
         mainCamera.shake(100, 0.002);
         weapon.ammo++
@@ -858,7 +881,7 @@ function shootBullet(rotation) {
           const bullet = bullets.get(player.x, player.y);
           mainCamera.shake(100, 0.004);
           gunshot.play()
-          bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80);
+          bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80, false);
           weapon.ammo++
           
           gunshot.setDetune(random);
@@ -871,7 +894,7 @@ function shootBullet(rotation) {
           const bullet = bullets.get(player.x, player.y);
           mainCamera.shake(50, 0.003);
           gunshot.play()
-          bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80);
+          bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80, false);
           weapon.ammo++
           
           gunshot.setDetune(random);
@@ -883,6 +906,36 @@ function shootBullet(rotation) {
       break
     } 
   }
+
+export function enemyShoot(enemy, weapon, rotation, sound) {
+      let random = Phaser.Math.Between(-100, 100);
+      let bullet
+      switch(weapon){
+        case 1:  
+            sound.play()
+            bullet = bullets.get(player.x, player.y);
+            bullet.fire(rotation, enemy.x, enemy.y, 4000, 4500, 0.07, 0.09, 100, true);          
+            gunshot.setDetune(random);
+  
+          break
+        case 2:
+            for (let i = 0; i <= 12; i++) {
+              sound.play()
+              bullet = bullets.get(player.x, player.y);
+              bullet.fire(rotation, enemy.x, enemy.y, 2000, 4000, 0.07, 0.2, 80, true);
+              gunshot.setDetune(random);          
+          }
+          break
+        case 3:
+              sound.play()
+              bullet = bullets.get(player.x, player.y);
+              bullet.fire(rotation, enemy.x, enemy.y, 5000, 5500, 0.07, 0.09, 80, true);
+              gunshot.setDetune(random);         
+          break
+        default:
+          break
+        } 
+      }
 
   export function spawnWeapon(x,y) {
     let roll = Phaser.Math.Between(1, 10)
@@ -901,3 +954,4 @@ function shootBullet(rotation) {
         corpse.spawn(x,y,r,vx,vy)
       }
   }
+
