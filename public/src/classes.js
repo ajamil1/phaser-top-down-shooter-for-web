@@ -162,9 +162,19 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
   constructor(scene, x, y) {
     super(scene, x, y, 'player');
     scene.add.existing(this);
-    this.gunshot = this.scene.sound.add('gunshot', {
+    this.pistol_sfx = this.scene.sound.add('pistol_sfx', {
       loop: false,
-      volume: 0.5,
+      volume: 0.4,
+      allowMultiple: true
+    })
+    this.shotgun_sfx = this.scene.sound.add('shotgun_sfx', {
+      loop: false,
+      volume: 0.4,
+      allowMultiple: true
+    })
+    this.rifle_sfx = this.scene.sound.add('rifle_sfx', {
+      loop: false,
+      volume: 0.4,
       allowMultiple: true
     })
     scene.physics.add.existing(this);
@@ -196,7 +206,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
       delay: 300,
       callback: () => {
         if (this.loop == true && this.weapon == 1 && this.death == false) {
-          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+          enemyShoot(this, this.weapon, this.rotation, this.pistol_sfx)
         }
       },
       callbackScope: this,
@@ -206,7 +216,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
       delay: 800,
       callback: () => {
         if (this.loop == true && this.weapon == 2 && this.death == false) {
-          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+          enemyShoot(this, this.weapon, this.rotation, this.shotgun_sfx)
         }
       },
       callbackScope: this,
@@ -216,7 +226,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite{
       delay: 100,
       callback: () => {
         if (this.loop == true && this.weapon == 3 && this.death == false) {
-          enemyShoot(this, this.weapon, this.rotation, this.gunshot)
+          enemyShoot(this, this.weapon, this.rotation, this.rifle_sfx)
         }
       },
       callbackScope: this,

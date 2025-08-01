@@ -15,7 +15,9 @@ export class MainMenuScene extends Phaser.Scene {
 
   preload() {
 
-    this.load.audio('gunshot', '/src/assets/gunshot.mp3');
+    this.load.audio('shotgun_sfx', '/src/assets/shotgun_sfx.mp3');
+    this.load.audio('pistol_sfx', '/src/assets/pistol_sfx.mp3');
+    this.load.audio('rifle_sfx', '/src/assets/rifle_sfx.mp3');
     this.load.audio('banishing', '/src/assets/Filmmaker - Great Tribulations - 01 Banishing.mp3');
     this.load.glsl('bloom', '/src/assets/shaders/shader0.frag');
     this.load.glsl('pixelate', '/src/assets/shaders/pixelate.frag');
@@ -55,7 +57,18 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   create() {
-    gunshot = this.sound.add('gunshot', {
+    shotgun_sfx = this.sound.add('shotgun_sfx', {
+      loop: false,
+      volume: 0.5,
+      allowMultiple: true
+    });
+
+    pistol_sfx = this.sound.add('pistol_sfx', {
+      loop: false,
+      volume: 0.5,
+      allowMultiple: true
+    });
+    rifle_sfx = this.sound.add('rifle_sfx', {
       loop: false,
       volume: 0.5,
       allowMultiple: true
@@ -754,7 +767,9 @@ let cursorMoving
 let weapons
 let dashLines;
 let enemyFighters
-let gunshot
+let pistol_sfx
+let shotgun_sfx
+let rifle_sfx
 let worldBounds = { width: 10000, height: 10000 };  // Large world size
 let moveToPointer = false;
 let shooting = false
@@ -866,13 +881,13 @@ function shootBullet(rotation) {
     case "pistol":
       if ( weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
-        gunshot.play()
+        pistol_sfx.play()
         bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100, false);
         
         mainCamera.shake(100, 0.002);
         weapon.ammo++
         
-        gunshot.setDetune(random);
+        pistol_sfx.setDetune(random);
       }
       break
     case "shotgun":
@@ -880,11 +895,11 @@ function shootBullet(rotation) {
         for (let i = 0; i <= 12; i++) {
           const bullet = bullets.get(player.x, player.y);
           mainCamera.shake(100, 0.004);
-          gunshot.play()
+          shotgun_sfx.play()
           bullet.fire(rotation, player.x, player.y, 2000, 4000, 0.07, 0.2, 80, false);
           weapon.ammo++
           
-          gunshot.setDetune(random);
+          shotgun_sfx.setDetune(random);
         }
       }
       break
@@ -893,11 +908,11 @@ function shootBullet(rotation) {
         if ( weapon.ammo > 0) {
           const bullet = bullets.get(player.x, player.y);
           mainCamera.shake(50, 0.003);
-          gunshot.play()
+          rifle_sfx.play()
           bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80, false);
           weapon.ammo++
           
-          gunshot.setDetune(random);
+          rifle_sfx.setDetune(random);
         }
       }
       break
@@ -915,7 +930,7 @@ export function enemyShoot(enemy, weapon, rotation, sound) {
             sound.play()
             bullet = bullets.get(player.x, player.y);
             bullet.fire(rotation, enemy.x, enemy.y, 4000, 4500, 0.07, 0.09, 100, true);          
-            gunshot.setDetune(random);
+            pistol_sfx.setDetune(random);
   
           break
         case 2:
@@ -923,14 +938,14 @@ export function enemyShoot(enemy, weapon, rotation, sound) {
               sound.play()
               bullet = bullets.get(player.x, player.y);
               bullet.fire(rotation, enemy.x, enemy.y, 2000, 4000, 0.07, 0.2, 80, true);
-              gunshot.setDetune(random);          
+              shotgun_sfx.setDetune(random);          
           }
           break
         case 3:
               sound.play()
               bullet = bullets.get(player.x, player.y);
               bullet.fire(rotation, enemy.x, enemy.y, 5000, 5500, 0.07, 0.09, 80, true);
-              gunshot.setDetune(random);         
+              rifle_sfx.setDetune(random);         
           break
         default:
           break
