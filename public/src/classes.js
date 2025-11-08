@@ -1,5 +1,5 @@
 import {
-  player, mainCamera, config,
+  player, cursor, mainCamera, config, spaceDown,
   spawnWeapon, spawnCorpse, enemyShoot,
   upgrade, weapon,
   bullets,
@@ -133,6 +133,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     this.setVisible(false);
     this.speed = 0
     this.setScale(2)
+    this.selected = false
     this.lifespan = 0
     this.id = Phaser.Math.Between(0, 2);
   }
@@ -159,6 +160,16 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     return
   }
 
+  selectWeapon() {
+    const distanceToCursor = Phaser.Math.Distance.Between(this.x, this.y, cursor.x, cursor.y)
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
+    this.selected = true
+
+    if (distanceToCursor <= 200 && distance <= 500) {
+      this.selected = true
+    } 
+  }
+
   spawn(x, y) {
 
     this.body.setCircle(this.body.width / 2);
@@ -178,14 +189,27 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
       this.setActive(false)
       this.setVisible(false);
     }
+
+    const distanceToCursor = Phaser.Math.Distance.Between(this.x, this.y, cursor.x, cursor.y)
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
+
+    if (distanceToCursor <= 200 && distance <= 3000) {
+      this.setTint(0xff0051);
+      if (spaceDown == true) {
+        this.selected = true
+      }
+    } else {
+      this.clearTint()
+    }
+
     this.rotation += (this.speed / 100)
 
     this.x += Math.cos(angle) * this.speed;
     this.y += Math.sin(angle) * this.speed;
 
     // Optionally, you can add a check to stop movement when the enemy reaches the player
-    const distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
-    if (distance > 500) {
+    
+    if (this.selected == false) {
       // Stop the enemy's movement when it's close enough to the player
       this.speed = 0;
     }

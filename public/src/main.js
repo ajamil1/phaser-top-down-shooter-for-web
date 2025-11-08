@@ -309,41 +309,42 @@ export class MainGameScene extends Phaser.Scene {
     this.time.delayedCall(50, () => {
       console.log("3")
       obtainWeapon = this.physics.add.overlap(player, weapons, function collectWeapon(player, weaponObj) {
-        obtainWeapon.active = false
-        switch (weaponObj.id) {
-          case 0:
-            weapon.type = "pistol"
-            weapon.ammo = 9
-            weapon.firemode = "semi"
-            player.setFrame(5)
-            break;
-          case 1:
-            weapon.type = "shotgun"
-            weapon.ammo = 5
-            weapon.firemode = "semi"
-            player.setFrame(7)
-            break;
-          case 2:
-            weapon.type = "ar"
-            weapon.ammo = 25
-            weapon.firemode = "auto"
-            weapon.firerate = 150
-            player.setFrame(6)
-            break;
-          default:
-            weapon.type = "none"
-            weapon.ammo = 25
-            weapon.firemode = "auto"
-            weapon.firerate = 150
-            player.setFrame(0)
-            break;
-        }
-
-        setTimeout(() => {
-          weaponObj.destroy()
-          obtainWeapon.active = true
-          return
-        }, 50)
+        if (weaponObj.selected == true) {
+          obtainWeapon.active = false
+          switch (weaponObj.id) {
+            case 0:
+              weapon.type = "pistol"
+              weapon.ammo = 9
+              weapon.firemode = "semi"
+              player.setFrame(5)
+              break;
+            case 1:
+              weapon.type = "shotgun"
+              weapon.ammo = 5
+              weapon.firemode = "semi"
+              player.setFrame(7)
+              break;
+            case 2:
+              weapon.type = "ar"
+              weapon.ammo = 25
+              weapon.firemode = "auto"
+              weapon.firerate = 150
+              player.setFrame(6)
+              break;
+            default:
+              weapon.type = "none"
+              weapon.ammo = 25
+              weapon.firemode = "auto"
+              weapon.firerate = 150
+              player.setFrame(0)
+              break;
+          }
+          setTimeout(() => {
+            weaponObj.destroy()
+            obtainWeapon.active = true
+            return
+          }, 50)
+        } else {weaponObj.selected = false}
       })
     })
 
@@ -446,8 +447,18 @@ export class MainGameScene extends Phaser.Scene {
     this.shiftKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT);
 
     this.input.keyboard.on('keydown-SHIFT', () => {
-      player.setMaxVelocity(maxVelocity * 3);
+      player.setMaxVelocity(maxVelocity * 0.25);
       player.setMaxVelocity(maxVelocity);
+    })
+
+    this.input.keyboard.on('keydown-SPACE', () => {
+      console.log("DOWN")
+      spaceDown = true
+    })
+
+    this.input.keyboard.on('keyup-SPACE', () => {
+      console.log("UP")
+      spaceDown = false
     })
 
     this.input.on('pointerdown', (pointer) => {
@@ -776,6 +787,8 @@ export let corpses
 export let bullets
 export let frames = 0
 export let mainCamera
+export let cursor;
+export let spaceDown = false
 let enemySights
 let enemyCollisionDetection
 let bulletWallOverlap
@@ -785,7 +798,7 @@ let walls
 let banishing
 let obtainWeapon
 
-let cursor;
+
 let angleToPointer
 let cursorDistance
 let legs
@@ -883,9 +896,9 @@ function spawnEnemyFighter() {
 
 }
 
-function spawnEnemySight(enemy){
+function spawnEnemySight(enemy) {
   let sight = enemySights.get(enemy.x, enemy.y)
-  if(sight) {
+  if (sight) {
     sight.spawn(enemy)
   }
 }
@@ -916,7 +929,7 @@ function spawnWall() {
 
 async function recursiveSpawnWall(x, y, loop, roll) {
   const wall = await walls.get(x, y)
-  const axis = Phaser.Math.Between(0,1)
+  const axis = Phaser.Math.Between(0, 1)
   //const roll = Phaser.Math.Between(0, 3)
   loop = Phaser.Math.Between(0, 20)
   const gap = 66
