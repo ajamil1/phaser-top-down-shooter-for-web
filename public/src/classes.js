@@ -1,6 +1,6 @@
 import {
   player, cursor, mainCamera, config, spaceDown,
-  spawnWeapon, spawnCorpse, spawnSpark, enemyShoot,
+  spawnWeapon, spawnCorpse, spawnEnemySight, spawnSpark, enemyShoot,
   upgrade, weapon,
   bullets,
   MainGameScene, MainMenuScene
@@ -223,16 +223,22 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y) {
     super(scene, x, y, 'sight');
     scene.add.existing(this);
+    this.direction
     scene.physics.add.existing(this);
-    this.setScale(2)
+    this.setScale(0.1, 0.1)
     this.partner
+    this.sightAngle = 270
     this.scan = 0
   }
 
-  spawn(partner) {
+  spawn(partner, angle) {
 
+    this.sightAngle = angle
+
+    console.log(this.sightAngle)
     this.setAlpha(0)
     this.partner = partner
+    this.wall
     this.setActive(true);
     this.setVisible(true);
     this.setPosition(partner.x, partner.y);
@@ -242,20 +248,35 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
   }
 
   detection(wall) {
+    if (this.wall == null) {
+      this.wall = wall
+    }
     this.partner.divert(wall)
+
   }
 
   update() {
-    this.scan += 20
-    if (this.scan >= 100) {
+    this.scan += 10
+    this.scaleX += 0.07
+    this.scaleY += 0.07
+
+    if (this.scan >= 300) {
+      console.log(this.sightAngle)
       this.scan = 0
       this.partner.clear()
+      this.setScale(0.1, 0.1)
+      this.wall = null
+      // if (this.wall != null) {
+      //   this.setActive(false)
+      //   this.setVisible(false)
+      // }
+
     }
     this.body.velocity.x = this.partner.body.x
     this.body.velocity.y = this.partner.body.y
 
-    this.x = this.partner.x + (Math.cos(this.partner.rotation + Phaser.Math.DegToRad(270)) * this.scan);
-    this.y = this.partner.y + (Math.sin(this.partner.rotation + Phaser.Math.DegToRad(270)) * this.scan);
+    this.x = this.partner.x + (Math.cos(this.partner.rotation + Phaser.Math.DegToRad(this.sightAngle)) * this.scan);
+    this.y = this.partner.y + (Math.sin(this.partner.rotation + Phaser.Math.DegToRad(this.sightAngle)) * this.scan);
     this.setRotation(this.partner.rotation)
 
   }
@@ -312,6 +333,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.angularAcceleration = 10;
     this.loop = false;
     this.wall = null
+    this.sight = false
     this.scene.time.addEvent({
       delay: 300,
       callback: () => {
@@ -443,7 +465,6 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
           player.clearTint()
         }, 50);
         break;
-
     }
     return
 
@@ -466,8 +487,10 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
-
   spawn(x, y, r) {
+    if (this.sight == false) {
+      spawnEnemySight(this, 270)
+    }
     this.turnScale = 1
     this.loop = false
     this.wallCount = 0
@@ -503,9 +526,10 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
   }
 
   divert(wall) {
-    this.wallCount += 1
-    this.wall = wall
-
+    if (wall != this) {
+      this.wallCount += 1
+      this.wall = wall
+    }
   }
 
   clear() {
@@ -514,13 +538,14 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
   }
 
   update(time, delta) {
+    let turnSpeed = 0.05
+    let turnAngle = -1
     if (this.wall != null) {
-      this.turnScale = Phaser.Math.Distance.Between(this.x, this.y, this.wall.x, this.wall.y)
-      if (this.turnScale <= 30) {
-        //console.log(this.turnScale)
+      if (this.wall.body.gameObject == EnemyFighter) {
+        turnSpeed = 0.001
+        turnAngle = -0.01
       }
     }
-    else { this.turnScale = 1 }
 
     this.setActive(true);
     this.setVisible(true);
@@ -531,12 +556,11 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     let angle
     if (this.wall == null) {
       angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
-      this.setRotation(Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), 0.09))
+      this.setRotation(Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), (0.09)))
     } else {
       angle = Phaser.Math.Angle.Between(this.wall.x, this.wall.y, this.x, this.y,);
-      if (this.wallCount >= 10) {
-        this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, (angle * -1) + (Phaser.Math.DegToRad(90)), (0.09 * 1))))
-      }
+      this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, (angle * (turnAngle)) + (Phaser.Math.DegToRad(90)), turnSpeed)))
+
 
     }
     let radians = Phaser.Math.DegToRad(this.angle);
@@ -672,6 +696,12 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   }
 
   async fire(rotation, x, y, range_min, range_max, spread_min, spread_max, spawn_offset, enemyBullet) {
+    if (enemyBullet != true) {
+      this.scene.input.setDefaultCursor(`url(/src/assets/cursor-shoot.png) ${40 / 2} ${40 / 2}, pointer`)
+      setTimeout(() => {
+        this.scene.input.setDefaultCursor(`url(/src/assets/cursor.png) ${40 / 2} ${40 / 2}, pointer`)
+      }, 70)
+    }
     this.body.setCircle(2);
     this.enemyBullet = enemyBullet
     this.body.setOffset(this.width / 2 - 2, this.height / 2 - 2)
@@ -685,6 +715,7 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.setTint(0xffffff)
     this.setActive(true);
     this.setVisible(true);
+    
 
     const velocity = this.velocity
     const spread = this.spread

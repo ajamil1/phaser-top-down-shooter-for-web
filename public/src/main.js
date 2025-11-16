@@ -12,6 +12,8 @@ import {
 export class MainMenuScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MainMenuScene' });  // Unique key for this scene
+    this.debug = false
+    this.music = 0.5
   }
 
   preload() {
@@ -102,7 +104,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.anims.create({
       key: "knockdown",
       frames: this.anims.generateFrameNumbers("player", { frames: [10, 11, 12, 12, 13, 14] }),
-      frameRate: 12,
+      frameRate: 20,
       repeat: 0
     })
 
@@ -140,6 +142,27 @@ export class MainMenuScene extends Phaser.Scene {
       .setInteractive()  // Make the text interactive (clickable)
       .on('pointerdown', () => this.scene.start('MainGameScene'));  // On click, start the game scene
 
+    let debugButton = this.add.text(0, 0, 'Toggle Debug: ' + MainMenuScene.debug, { fontSize: '32px', fill: '#fff' })
+      .setOrigin(0.5)
+      .setInteractive()  // Make the text interactive (clickable)
+      .on('pointerdown', () => {
+        MainMenuScene.debug = !MainMenuScene.debug
+        this.scene.restart()
+      });  // On click, start the game scene
+
+    let musicButton = this.add.text(0, 100, 'Toggle Music: ' + MainMenuScene.music, { fontSize: '32px', fill: '#fff' })
+      .setOrigin(0.5)
+      .setInteractive()  // Make the text interactive (clickable)
+      .on('pointerdown', () => {
+        if (MainMenuScene.music == 0.5) {
+          MainMenuScene.music = 0
+        } else {
+          MainMenuScene.music = 0.5
+        }
+
+        this.scene.restart()
+      });  // On click, start the game scene
+
     this.input.on(`pointermove`, (pointer) => {
       cursorMoving = true
 
@@ -156,6 +179,7 @@ export class MainMenuScene extends Phaser.Scene {
       maxSize: 100, // Adjust the max size as needed
       runChildUpdate: true,
     });
+
   }
 
   update(time, delta) {
@@ -167,8 +191,8 @@ export class MainMenuScene extends Phaser.Scene {
     let midY = (player.y + pointerY) / 2;
 
     const camera = this.cameras.main;
-    camera.scrollX = Phaser.Math.Linear(camera.scrollX, midX - camera.width / 2, 0.1);
-    camera.scrollY = Phaser.Math.Linear(camera.scrollY, midY - camera.height / 2, 0.1);
+    camera.scrollX = Phaser.Math.Linear(camera.scrollX, midX - camera.width / 2, 1);
+    camera.scrollY = Phaser.Math.Linear(camera.scrollY, midY - camera.height / 2, 1);
   }
 
   openSettings() {
@@ -189,7 +213,7 @@ export class MainGameScene extends Phaser.Scene {
 
     banishing = this.sound.add('banishing', {
       loop: true,
-      volume: 0.5,
+      volume: MainMenuScene.music,
       allowMultiple: true
     });
 
@@ -427,6 +451,13 @@ export class MainGameScene extends Phaser.Scene {
     })
 
     this.time.delayedCall(50, () => {
+      console.log("10")
+      enemyShootSafety = this.physics.add.overlap(enemySights, enemyFighters, function collisionDetection(sight, enemy) {
+        sight.detection(enemy)
+      })
+    })
+
+    this.time.delayedCall(50, () => {
       console.log("12")
       meleeHitboxEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, meleeHitbox, function hitEnemyFighter(meleeHitbox, enemy) {
         try {
@@ -542,6 +573,9 @@ export class MainGameScene extends Phaser.Scene {
         setWeapon(weapon.type)
       }
       if (!pointer.leftButtonDown()) {
+      //   if (weapon.type == "pistol") {
+      //   shootBullet(player.rotation); 
+      // }
         shooting = false
       }
       if (!pointer.leftButtonDown() && weapon.type == "none") {
@@ -749,14 +783,13 @@ export const config = {
       fixedStep: false,
       fps: 144,          // Sets the physics update rate to 60 FPS
       timeStep: 1 / 144,  // Defines the fixed timestep as 1/60 seconds (60Hz)
-      debug: false     // Enable this to visualize physics objects (optional)
+      debug: false   // Enable this to visualize physics objects (optional)
     }
   },
   fps: {
     smoothstep: true,
     target: 144,
     forceSetTimeOut: true,
-    debug: false
   },
   render: {
     antialias: true,       // Enable anti-aliasing
@@ -813,12 +846,14 @@ export let spaceDown = false
 let sparks
 let enemySights
 let enemyCollisionDetection
+let enemyShootSafety
 let bulletWallOverlap
 let playerWallCollision
 let enemyWallCollision
 let walls
 let banishing
 let obtainWeapon
+
 
 
 let angleToPointer
@@ -896,7 +931,6 @@ function spawnEnemyFighter() {
 
   if (enemy) {
     enemy.spawn(player.x, player.y, 2000)
-    spawnEnemySight(enemy)
     enemyX = enemy.x
     enemyY = enemy.y
 
@@ -911,17 +945,17 @@ function spawnEnemyFighter() {
 
     if (enemy) {
       enemy.spawn(posX, posY, radius)
-      spawnEnemySight(enemy)
     }
     reroll = Phaser.Math.Between(0, 5)
   }
 
 }
 
-function spawnEnemySight(enemy) {
-  let sight = enemySights.get(enemy.x, enemy.y)
+export function spawnEnemySight(enemy) {
+  let sight = enemySights.getFirstDead(enemy.x, enemy.y)
   if (sight) {
-    sight.spawn(enemy)
+    //console.log(enemy.sight)
+    sight.spawn(enemy, 270)
   }
 }
 
@@ -1007,7 +1041,7 @@ function shootBullet(rotation) {
       if (weapon.ammo > 0) {
         const bullet = bullets.get(player.x, player.y);
         pistol_sfx.play()
-        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.07, 0.09, 100, false);
+        bullet.fire(rotation, player.x, player.y, 4000, 4500, 0.02, 0.04, 100, false);
 
         mainCamera.shake(100, 0.002);
         weapon.ammo++
@@ -1062,7 +1096,7 @@ export function enemyShoot(enemy, weapon, rotation, sound) {
       for (let i = 0; i <= 12; i++) {
         sound.play()
         bullet = bullets.get(player.x, player.y);
-        bullet.fire(rotation, enemy.x, enemy.y, 2000, 4000, 0.07, 0.2, 80, true);
+        bullet.fire(rotation, enemy.x, enemy.y, 2000, 4000, 0.04, 0.2, 80, true);
         shotgun_sfx.setDetune(random);
       }
       break
@@ -1102,7 +1136,7 @@ export function spawnSpark(x, y, r) {
     if (spark) {
       spark.spawn(x, y, r)
     }
-    loop = Phaser.Math.Between(0, 10)
+    loop = Phaser.Math.Between(0, 100)
     spark = sparks.get(x, y);
   } while (loop >= 3)
 
