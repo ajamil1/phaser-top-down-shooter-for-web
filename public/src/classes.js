@@ -1,6 +1,6 @@
 import {
   player, cursor, mainCamera, config, spaceDown,
-  spawnWeapon, spawnCorpse, enemyShoot,
+  spawnWeapon, spawnCorpse, spawnSpark, enemyShoot,
   upgrade, weapon,
   bullets,
   MainGameScene, MainMenuScene
@@ -167,11 +167,12 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
 
     if (distanceToCursor <= 200 && distance <= 500) {
       this.selected = true
-    } 
+    }
   }
 
   spawn(x, y) {
-
+    this.speed = 0
+    this.selected = 0
     this.body.setCircle(this.body.width / 2);
     this.sprite();
     this.rotation = Phaser.Math.FloatBetween(0, Math.PI * 2);
@@ -208,7 +209,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     this.y += Math.sin(angle) * this.speed;
 
     // Optionally, you can add a check to stop movement when the enemy reaches the player
-    
+
     if (this.selected == false) {
       // Stop the enemy's movement when it's close enough to the player
       this.speed = 0;
@@ -245,7 +246,7 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
   }
 
   update() {
-    this.scan+= 20
+    this.scan += 20
     if (this.scan >= 100) {
       this.scan = 0
       this.partner.clear()
@@ -285,10 +286,14 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setScale(3);
     this.setActive(false);
     this.setVisible(false);
+    //this.effect = this.postFX.addGlow(0xffffff, 2, 1, false, 0.001, 1);
+    //this.effect.setActive(false)
     this.lastShotTime = Math.floor(Math.random() * (200 - 0 + 1)) + 0;
     this.shotInterval = 300; // Delay in milliseconds (e.g., 500ms)
-    this.health = 0
+    this.health = 2
+    this.turnScale = 1
     this.weapon
+    this.wallCount = 0
     this.body.setMass(50)
     this.distance = 9999
     this.speed = 0
@@ -312,6 +317,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       callback: () => {
         if (this.loop == true && this.weapon == 1 && this.death == false) {
           enemyShoot(this, this.weapon, this.rotation, this.pistol_sfx)
+
         }
       },
       callbackScope: this,
@@ -344,7 +350,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     let object = that.constructor.name
     switch (object) {
       case "Bullet":
-        console.log("p")
+
         if (that.visible == false) {
           return
         }
@@ -354,6 +360,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
           that.setVisible(false)
           that.body.checkCollision.none = true;
           this.health = this.health - that.damage
+          await spawnSpark(that.x, that.y, that.rotation + Phaser.Math.DegToRad(180))
           if (this.health <= 0) {
             this.legs.setActive(false)
             this.legs.setVisible(false)
@@ -461,8 +468,10 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
 
 
   spawn(x, y, r) {
+    this.turnScale = 1
     this.loop = false
-    this.weapon = Phaser.Math.Between(0, 30)
+    this.wallCount = 0
+    this.weapon = Phaser.Math.Between(0, 20)
     this.death = false
     this.body.checkCollision.none = false
     this.setActive(true)
@@ -494,14 +503,25 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
   }
 
   divert(wall) {
+    this.wallCount += 1
     this.wall = wall
+
   }
 
   clear() {
     this.wall = null
+    this.wallCount = 0
   }
 
   update(time, delta) {
+    if (this.wall != null) {
+      this.turnScale = Phaser.Math.Distance.Between(this.x, this.y, this.wall.x, this.wall.y)
+      if (this.turnScale <= 30) {
+        //console.log(this.turnScale)
+      }
+    }
+    else { this.turnScale = 1 }
+
     this.setActive(true);
     this.setVisible(true);
     this.legs.setPosition(this.x, this.y)
@@ -514,7 +534,10 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       this.setRotation(Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), 0.09))
     } else {
       angle = Phaser.Math.Angle.Between(this.wall.x, this.wall.y, this.x, this.y,);
-      this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, (angle * -1) + (Phaser.Math.DegToRad(90)), 0.15)))
+      if (this.wallCount >= 10) {
+        this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, (angle * -1) + (Phaser.Math.DegToRad(90)), (0.09 * 1))))
+      }
+
     }
     let radians = Phaser.Math.DegToRad(this.angle);
     this.body.velocity.x = Math.cos(radians - (Phaser.Math.DegToRad(90))) * this.speed;
@@ -569,7 +592,62 @@ export class Corpse extends Phaser.Physics.Arcade.Sprite {
       }
     } else {
       this.body.velocity.x = this.body.velocity.x / 1.07
-      this.body.velocity.y -= this.body.velocity.y / 1.07
+      this.body.velocity.y = this.body.velocity.y / 1.07
+    }
+  }
+}
+
+export class Spark extends Phaser.Physics.Arcade.Sprite {
+  constructor(scene, x, y) {
+    super(scene, x, y, 'spark');
+    scene.add.existing(this);
+    scene.physics.add.existing(this);
+    this.setActive(false);
+    this.setVisible(false);
+    this.setAlpha(1)
+    this.setDepth(3)
+    this.setBounce(2)
+    this.setDamping(true);
+    this.spawnX = x
+    this.spawnY = y
+    this.roll
+  }
+
+  spawn(x, y, r) {
+    this.setFrame(5)
+    this.setAlpha(1)
+    this.setActive(true)
+    this.setVisible(true)
+    this.setScale(3)
+    this.scaleX = Phaser.Math.Between(10, 20)
+    this.scaleY = 0.5
+    this.acceleration = 0.1
+    this.speed = Phaser.Math.Between(500, 2000);
+    this.setMaxVelocity(this.speed)
+    this.power = Math.floor(this.scale)
+    this.setPosition(x + Phaser.Math.Between(-50, 50), y + Phaser.Math.Between(-20, 20));
+    this.setRotation(r + Phaser.Math.DegToRad(Phaser.Math.Between(-30, 30)))
+
+    this.body.velocity.x = Math.cos(r) * -this.speed;
+    this.body.velocity.y = Math.sin(r) * -this.speed;
+  }
+
+  update(time, delta) {
+
+    if (Math.abs(this.body.velocity.x) <= 1 && Math.abs(this.body.velocity.y) <= 1) {
+      this.setAlpha(this.alpha - 0.01)
+      if (this.alpha <= 0.05) {
+        this.setActive(false);
+        this.setVisible(false);
+      }
+    } else {
+      this.scaleX -= 0.5
+      this.body.velocity.x = this.body.velocity.x / 1.01
+      this.body.velocity.y = this.body.velocity.y / 1.01
+      if (this.scaleX <= 1) {
+        this.setActive(false);
+        this.setVisible(false);
+      }
     }
   }
 }

@@ -1,7 +1,7 @@
 import './style.css';
 import Phaser from 'phaser';
 import {
-  dashLine, Wall,
+  dashLine, Wall, Spark,
   Weapon,
   EnemyFighter, EnemyBullet, EnemySight,
   Bullet, Corpse
@@ -43,6 +43,12 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.spritesheet('weapon', '/src/assets/weapons.png', {
       frameWidth: 63,
       frameHeight: 63,
+      margin: 0,
+      spacing: 0
+    });
+    this.load.spritesheet('spark', '/src/assets/enemy-sparks.png', {
+      frameWidth: 5,
+      frameHeight: 5,
       margin: 0,
       spacing: 0
     });
@@ -111,6 +117,7 @@ export class MainMenuScene extends Phaser.Scene {
     player.setAlpha(0)
     //player.body.setCircle((player.body.width*1.3)/2);
     const camera = this.cameras.main;
+    //camera.postFX.addPixelate(1);
 
     let width = this.cameras.main.width;
     let height = this.cameras.main.height;
@@ -187,6 +194,11 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     banishing.play()
+
+
+
+    //this.cameras.main.postFX.addPixelate(2);
+    //this.cameras.main.postFX.addBokeh(0,1,0);
     const cursorWidth = 40
     const cursorHeight = 40
 
@@ -269,6 +281,12 @@ export class MainGameScene extends Phaser.Scene {
       runChildUpdate: true,
     });
 
+    sparks = this.physics.add.group({
+      classType: Spark,
+      maxSize: 1000, // Adjust the max size as needed
+      runChildUpdate: true,
+    });
+
     enemyFighters = this.physics.add.group({
       classType: EnemyFighter,
       maxSize: 30,
@@ -344,7 +362,7 @@ export class MainGameScene extends Phaser.Scene {
             obtainWeapon.active = true
             return
           }, 50)
-        } else {weaponObj.selected = false}
+        } else { weaponObj.selected = false }
       })
     })
 
@@ -353,6 +371,7 @@ export class MainGameScene extends Phaser.Scene {
       console.log("5")
       bulletEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, bullets, function hitEnemyFighter(enemy, bullet) {
         enemy.hit(bullet)
+
       })
     })
 
@@ -395,6 +414,7 @@ export class MainGameScene extends Phaser.Scene {
       bulletWallOverlap = this.physics.add.overlap(walls, bullets, function hitEnemyFighter(wall, bullet) {
         bullet.setActive(false)
         bullet.setVisible(false)
+        spawnSpark(bullet.x, bullet.y, bullet.rotation)
         bullet.body.checkCollision.none = true;
       })
     })
@@ -578,6 +598,7 @@ export class MainGameScene extends Phaser.Scene {
       let pointerX = pointer.worldX;
       let pointerY = pointer.worldY;
       mainCamera = this.cameras.main;
+
       let centerX
       let centerY
       centerX = (player.x * 1)
@@ -789,6 +810,7 @@ export let frames = 0
 export let mainCamera
 export let cursor;
 export let spaceDown = false
+let sparks
 let enemySights
 let enemyCollisionDetection
 let bulletWallOverlap
@@ -1053,6 +1075,13 @@ export function enemyShoot(enemy, weapon, rotation, sound) {
     default:
       break
   }
+  // //var effect = enemy.postFX.addShine(1, 1, 3, true);
+  // //enemy.effect.active = true
+
+  // setTimeout(() => {
+  //   enemy.effect.setActive(false)
+  // }, 100)
+
 }
 
 export function spawnWeapon(x, y) {
@@ -1065,6 +1094,19 @@ export function spawnWeapon(x, y) {
   }
 
 }
+export function spawnSpark(x, y, r) {
+  let spark = sparks.get(x, y);
+  let loop = Phaser.Math.Between(0, 10)
+
+  do {
+    if (spark) {
+      spark.spawn(x, y, r)
+    }
+    loop = Phaser.Math.Between(0, 10)
+    spark = sparks.get(x, y);
+  } while (loop >= 3)
+
+}
 
 export function spawnCorpse(x, y, r, vx, vy) {
   const corpse = corpses.get(player.x, player.y);
@@ -1072,4 +1114,5 @@ export function spawnCorpse(x, y, r, vx, vy) {
     corpse.spawn(x, y, r, vx, vy)
   }
 }
+
 
