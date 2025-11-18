@@ -5,7 +5,7 @@ import {
   Weapon,
   EnemyFighter, EnemyBullet, EnemySight,
   Bullet, Corpse
-} from './Classes'
+} from './classes.js'
 
 // Define the Bullet class first
 
@@ -213,7 +213,7 @@ export class MainGameScene extends Phaser.Scene {
 
     banishing = this.sound.add('banishing', {
       loop: true,
-      volume: MainMenuScene.music,
+      volume: 0.5,
       allowMultiple: true
     });
 
