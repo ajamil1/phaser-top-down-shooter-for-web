@@ -319,7 +319,7 @@ export class MainGameScene extends Phaser.Scene {
 
     enemySights = this.physics.add.group({
       classType: EnemySight,
-      maxSize: 40,
+      maxSize: enemyFighters.maxSize*3,
       runChildUpdate: true,
     });
 
@@ -331,7 +331,7 @@ export class MainGameScene extends Phaser.Scene {
 
     corpses = this.physics.add.group({
       classType: Corpse,
-      maxSize: 80,
+      maxSize: enemyFighters.maxSize*3,
       runChildUpdate: true,
     });
 
@@ -430,7 +430,16 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(50, () => {
       console.log("10")
-      enemyWallCollision = this.physics.add.collider(walls, enemyFighters)
+      enemyWallCollision = this.physics.add.collider(walls, enemyFighters, function enemyWallOverlap(wall, enemy) {
+        //enemy.divert(wall)
+      })
+    })
+
+     this.time.delayedCall(50, () => {
+      console.log("10")
+      enemyWallOverlap = this.physics.add.overlap(walls, enemyFighters, function enemyWallOverlap(wall, enemy) {
+        //enemy.divert(wall)
+      })
     })
 
     this.time.delayedCall(50, () => {
@@ -449,6 +458,8 @@ export class MainGameScene extends Phaser.Scene {
         sight.detection(wall)
       })
     })
+
+    
 
     this.time.delayedCall(50, () => {
       console.log("10")
@@ -832,6 +843,7 @@ let meleeX
 let meleeY
 
 export let enemyFighterCollision
+export let enemyWallOverlap
 export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
 export let playerEnemyBulletOverlap
@@ -843,8 +855,9 @@ export let frames = 0
 export let mainCamera
 export let cursor;
 export let spaceDown = false
+export let enemySights
 let sparks
-let enemySights
+
 let enemyCollisionDetection
 let enemyShootSafety
 let bulletWallOverlap
@@ -953,10 +966,10 @@ function spawnEnemyFighter() {
 
 export function spawnEnemySight(enemy) {
   let sight = enemySights.getFirstDead(enemy.x, enemy.y)
-  if (sight) {
-    //console.log(enemy.sight)
-    sight.spawn(enemy, 270)
-  }
+  // if (sight) {
+  //   //console.log(enemy.sight)
+  //   sight.spawn(enemy, 270)
+  // }
 }
 
 function spawndashLine() {
