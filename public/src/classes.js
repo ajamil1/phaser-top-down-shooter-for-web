@@ -136,6 +136,7 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     this.selected = false
     this.lifespan = 0
     this.id = Phaser.Math.Between(0, 2);
+    this.body.setCircle(this.body.width / 2);
   }
 
 
@@ -173,7 +174,6 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
   spawn(x, y) {
     this.speed = 0
     this.selected = 0
-    this.body.setCircle(this.body.width / 2);
     this.sprite();
     this.rotation = Phaser.Math.FloatBetween(0, Math.PI * 2);
     this.lifespan = 1000
@@ -332,6 +332,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.setDrag(0.001);
     this.maxRotationSpeed = 300;
     this.angularAcceleration = 10;
+    this.angleToPlayer
     this.loop = false;
     this.wall = null
     this.sight = false
@@ -600,15 +601,19 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setVisible(true)
     this.legs.rotation = this.rotation
     let angle
+    
+      this.angleToPlayer = Math.abs(Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y)))
     if (this.wall == null) {
       angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
       this.setRotation(Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), (0.09)))
     } else {
+      
       angle = Phaser.Math.Angle.Between(this.wall.x, this.wall.y, this.x, this.y,);
       this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, ((angle * this.polarity) * (this.turnAngle)) + (Phaser.Math.DegToRad(90)), this.turnSpeed)))
       //this.clear()
 
     }
+    
     let radians = Phaser.Math.DegToRad(this.angle);
     this.body.velocity.x = Math.cos(radians - (Phaser.Math.DegToRad(90))) * this.speed;
     this.body.velocity.y = Math.sin(radians - (Phaser.Math.DegToRad(90))) * this.speed;

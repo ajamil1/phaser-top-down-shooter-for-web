@@ -1089,7 +1089,7 @@ function shootBullet(rotation) {
       }
       break
     default:
-      //console.log("NO AMMO")
+      console.log(weapon.type)
       break
   }
 }
