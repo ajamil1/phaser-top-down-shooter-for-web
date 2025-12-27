@@ -2,8 +2,8 @@ import {
   player, cursor, mainCamera, config, spaceDown,
   spawnWeapon, spawnCorpse, spawnEnemySight, spawnSpark, enemyShoot,
   upgrade, weapon,
-  bullets, enemySights,
-  MainGameScene, MainMenuScene
+  bullets, enemySights, enemyPathScanners,
+  MainGameScene, MainMenuScene,
 } from './main'
 
 import Phaser from 'phaser'
@@ -224,12 +224,18 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, 'sight');
     scene.add.existing(this);
     this.direction
+    this.wall = null
     scene.physics.add.existing(this);
     this.setScale(0.1, 0.1)
     this.partner
     this.sightAngle = 270
     this.scan = 0
     this.polarity
+    this.scanner = enemyPathScanners.get(this.x, this.y)
+    if (this.scanner) {
+      this.scanner.spawn(this)
+    }
+
   }
 
   spawn(partner, angle, polarity) {
@@ -238,6 +244,7 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
     this.setAlpha(0)
     this.partner = partner
     this.wall
+
     this.setActive(true);
     this.setVisible(true);
     this.setPosition(partner.x, partner.y);
@@ -246,11 +253,13 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
     this.rotation = this.partner.rotation
   }
 
+
   detection(wall) {
     if (this.wall == null) {
       this.wall = wall
     }
-    this.partner.divert(wall, this.polarity)
+
+    this.partner.divert(wall, this.polarity, this.sightAngle)
 
   }
 
@@ -277,6 +286,35 @@ export class EnemySight extends Phaser.Physics.Arcade.Sprite {
       this.setPosition(this.partner.x, this.partner.y)
     }
     this.setRotation(this.partner.rotation)
+
+  }
+}
+
+export class EnemyPathScan extends Phaser.Physics.Arcade.Sprite {
+  constructor(scene, x, y) {
+    super(scene, x, y);
+    scene.add.existing(this);
+    scene.physics.add.existing(this);
+    this.setScale(1, 1)
+    this.setDepth(5)
+    this.setActive(true)
+    this.partner
+  }
+
+
+  spawn(partner) {
+    this.partner = partner
+
+  }
+
+  detection() {
+    if (this.partner) {
+      this.x = this.x + Math.cos(this.partner.rotation + Phaser.Math.DegToRad(this.partner.sightAngle)) * -30
+      this.y = this.y + Math.sin(this.partner.rotation + Phaser.Math.DegToRad(this.partner.sightAngle)) * -30
+    }
+  }
+
+  update() {
 
   }
 }
@@ -308,8 +346,6 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setScale(3);
     this.setActive(false);
     this.setVisible(false);
-    //this.effect = this.postFX.addGlow(0xffffff, 2, 1, false, 0.001, 1);
-    //this.effect.setActive(false)
     this.lastShotTime = Math.floor(Math.random() * (200 - 0 + 1)) + 0;
     this.shotInterval = 300; // Delay in milliseconds (e.g., 500ms)
     this.health = 2
@@ -337,22 +373,45 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.wall = null
     this.sight = false
     this.scan = 0
+    this.sights = []
+    this.turnFactor = 0
+    let angleCount = 7
 
-    let frontSight = enemySights.getFirstDead(this.x, this.y)
-    if (frontSight) {
-      frontSight.spawn(this, 270, 1)
+    for (let i = 0; i < angleCount; i++) {
+      let factor = 210 + ((140 / angleCount) * i)
+      let polarity = 1
+      if (factor <= 270) {
+        polarity = 1
+      } else { polarity = -1 }
+      this.sights[i] = {
+        sight: enemySights.getFirstDead(this.x, this.y),
+        factor: factor,
+        polarity: polarity
+      }
+       
+      console.log(factor + " : " + polarity)
     }
 
-    let leftSight = enemySights.getFirstDead(this.x, this.y)
-    if (leftSight) {
-      leftSight.spawn(this, 225, -1)
+    for (let i = 0; i <= this.sights.length; i++) {
+      if (this.sights[i]) {
+        this.sights[i].sight.spawn(this, this.sights[i].factor, this.sights[i].polarity)
+      }
     }
 
-    let rightSight = enemySights.getFirstDead(this.x, this.y)
-    if (rightSight) {
+    // let frontSight = enemySights.getFirstDead(this.x, this.y)
+    // if (frontSight) {
+    //   frontSight.spawn(this, 270, 1)
+    // }
 
-      rightSight.spawn(this, 315, -1)
-    }
+    // let leftSight = enemySights.getFirstDead(this.x, this.y)
+    // if (leftSight) {
+    //   leftSight.spawn(this, 270 - 30, -1)
+    // }
+
+    // let rightSight = enemySights.getFirstDead(this.x, this.y)
+    // if (rightSight) {
+    //   rightSight.spawn(this, 270 + 30, -1)
+    // }
 
     this.scene.time.addEvent({
       delay: 300,
@@ -386,15 +445,6 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       loop: true
     })
   }
-
-  // turn() {
-  //   if (frontSight.wall != null && leftSight.wall != null) {
-  //     angle = Phaser.Math.Angle.Between(this.wall.x, this.wall.y, this.x, this.y,);
-  //     this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, (angle * (rightSight.turnAngle)) + (Phaser.Math.DegToRad(90)), this.turnSpeed)))
-  //     //this.clear()
-      
-  //   }
-  // }
 
 
   async hit(that) {
@@ -563,13 +613,11 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
 
   }
 
-  divert(wall, polarity) {
+  divert(wall, polarity, angle) {
     this.polarity = polarity
     if (wall != this) {
       this.wallCount += 1
-      if (this.wallCount >= 20) {
-        //console.log(this.wallCount)
-      }
+      this.turnFactor = Math.abs(270 - angle)
       this.wall = wall
     }
   }
@@ -578,6 +626,50 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.wall = null
     this.wallCount = 0
     this.polarity = 1
+  }
+
+  rotate(currentAngle, inputAngle, turnSpeed) {
+    
+    let angleClamp = 1
+    let calcTurnSpeed = Phaser.Math.Clamp((turnSpeed * (30/this.turnFactor)), 0, 0.08)
+    let targetAngle = Phaser.Math.RadToDeg(inputAngle)
+    console.log(calcTurnSpeed)
+
+    if (this.wall != null) {
+      
+      // 8 Directions
+      if (targetAngle >= -45 && targetAngle <= 45) {// North
+        angleClamp = Phaser.Math.DegToRad(0)
+      }
+      else if (targetAngle >= 0 && targetAngle <= 90) { // North East
+        angleClamp = Phaser.Math.DegToRad(45)
+      }
+      else if (targetAngle >= 45 && targetAngle <= 135) { // East
+        angleClamp = Phaser.Math.DegToRad(90)
+      }
+      else if (targetAngle >= 90 && targetAngle <= 180) { // South East
+        angleClamp = Phaser.Math.DegToRad(135)
+      }
+      else if (targetAngle >= 135 && targetAngle <= 225) { // South
+        angleClamp = Phaser.Math.DegToRad(180)
+      }
+      else if (targetAngle >= 180 && targetAngle <= 270) { // South West
+        angleClamp = Phaser.Math.DegToRad(225)
+      }
+      else if (targetAngle >= 225 && targetAngle <= -45) { // West
+        angleClamp = Phaser.Math.DegToRad(270)
+      }
+      else if (targetAngle >= -89.9 && targetAngle <= 0) { // North West
+        angleClamp = Phaser.Math.DegToRad(-45)
+      }
+      this.setRotation((Phaser.Math.Angle.RotateTo(currentAngle, angleClamp, calcTurnSpeed)))
+    } else {
+      this.setRotation((Phaser.Math.Angle.RotateTo(currentAngle, inputAngle, turnSpeed)))
+    }
+
+    //console.log(targetAngle + " : " + Phaser.Math.RadToDeg(angleClamp))
+
+
   }
 
   update(time, delta) {
@@ -601,19 +693,26 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setVisible(true)
     this.legs.rotation = this.rotation
     let angle
-    
-      this.angleToPlayer = Math.abs(Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y)))
+
+    this.angleToPlayer = Math.abs(Phaser.Math.RadToDeg(Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y)))
     if (this.wall == null) {
       angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
-      this.setRotation(Phaser.Math.Angle.RotateTo(this.rotation, angle + (Phaser.Math.DegToRad(90)), (0.09)))
+      this.rotate(
+        this.rotation,
+        angle + (Phaser.Math.DegToRad(90)),
+        0.09)
     } else {
-      
+
       angle = Phaser.Math.Angle.Between(this.wall.x, this.wall.y, this.x, this.y,);
-      this.setRotation((Phaser.Math.Angle.RotateTo(this.rotation, ((angle * this.polarity) * (this.turnAngle)) + (Phaser.Math.DegToRad(90)), this.turnSpeed)))
+
+      this.rotate(
+        this.rotation,
+        ((angle * this.polarity) * (this.turnAngle)) + (Phaser.Math.DegToRad(90)),
+        this.turnSpeed)
       //this.clear()
 
     }
-    
+
     let radians = Phaser.Math.DegToRad(this.angle);
     this.body.velocity.x = Math.cos(radians - (Phaser.Math.DegToRad(90))) * this.speed;
     this.body.velocity.y = Math.sin(radians - (Phaser.Math.DegToRad(90))) * this.speed;

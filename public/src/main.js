@@ -1,9 +1,9 @@
 import './style.css';
-import Phaser from 'phaser';
+import Phaser, { Tilemaps } from 'phaser';
 import {
   dashLine, Wall, Spark,
   Weapon,
-  EnemyFighter, EnemyBullet, EnemySight,
+  EnemyFighter, EnemyBullet, EnemySight, EnemyPathScan,
   Bullet, Corpse
 } from './classes.js'
 
@@ -220,7 +220,6 @@ export class MainGameScene extends Phaser.Scene {
     banishing.play()
 
 
-
     //this.cameras.main.postFX.addPixelate(2);
     //this.cameras.main.postFX.addBokeh(0,1,0);
     const cursorWidth = 40
@@ -319,7 +318,13 @@ export class MainGameScene extends Phaser.Scene {
 
     enemySights = this.physics.add.group({
       classType: EnemySight,
-      maxSize: enemyFighters.maxSize*3,
+      maxSize: -1,
+      runChildUpdate: true,
+    });
+
+    enemyPathScanners = this.physics.add.group({
+      classType: EnemyPathScan,
+      maxSize: -1,
       runChildUpdate: true,
     });
 
@@ -342,14 +347,14 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.time.delayedCall(50, () => {
-      console.log("2")
+      console.log("Enemy Fighter Collisions Loaded!")
       enemyFighterCollision = this.physics.add.collider(enemyFighters, enemyFighters, function response(e1, e2) {
       });
     })
 
 
     this.time.delayedCall(50, () => {
-      console.log("3")
+      console.log("Player Weapon Picked Loaded!")
       obtainWeapon = this.physics.add.overlap(player, weapons, function collectWeapon(player, weaponObj) {
         if (weaponObj.selected == true) {
           obtainWeapon.active = false
@@ -392,7 +397,7 @@ export class MainGameScene extends Phaser.Scene {
 
 
     this.time.delayedCall(50, () => {
-      console.log("5")
+      console.log("Enemy Bullet Damage Loaded!")
       bulletEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, bullets, function hitEnemyFighter(enemy, bullet) {
         enemy.hit(bullet)
 
@@ -401,7 +406,7 @@ export class MainGameScene extends Phaser.Scene {
 
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Player Bullet Damage Loaded!")
       playerEnemyBulletOverlap = this.physics.add.overlap(player, bullets, function hitEnemyFighter(player, bullet) {
         bullet.setActive(false)
         bullet.setVisible(false)
@@ -417,33 +422,33 @@ export class MainGameScene extends Phaser.Scene {
     })
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Player Enemy Collisions Loaded!")
       playerEnemyFighterCollision = this.physics.add.collider(enemyFighters, player, function hitEnemyFighter(player, enemy) {
         enemy.hit(player)
       })
     })
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Player Wall Collisions Loaded!")
       playerWallCollision = this.physics.add.collider(walls, player)
     })
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Enemy Wall Overlap Loaded!")
       enemyWallCollision = this.physics.add.collider(walls, enemyFighters, function enemyWallOverlap(wall, enemy) {
         //enemy.divert(wall)
       })
     })
 
      this.time.delayedCall(50, () => {
-      console.log("10")
+      //console.log("10")
       enemyWallOverlap = this.physics.add.overlap(walls, enemyFighters, function enemyWallOverlap(wall, enemy) {
         //enemy.divert(wall)
       })
     })
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Bullet Wall Collisions Loaded!")
       bulletWallOverlap = this.physics.add.overlap(walls, bullets, function hitEnemyFighter(wall, bullet) {
         bullet.setActive(false)
         bullet.setVisible(false)
@@ -453,8 +458,18 @@ export class MainGameScene extends Phaser.Scene {
     })
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Sight Wall Detection Loaded!")
       enemyCollisionDetection = this.physics.add.overlap(enemySights, walls, function collisionDetection(sight, wall) {
+        if (wall && wall != EnemyFighter) {
+          sight.detection(wall)
+          sight.scanner.setPosition(wall.x, wall.y)
+        }
+      })
+    })
+
+    this.time.delayedCall(50, () => {
+      console.log("Wall Scan Detection Loaded!")
+      enemyPathScanDetection = this.physics.add.overlap(enemyPathScanners, walls, function collisionDetection(sight, wall) {
         sight.detection(wall)
       })
     })
@@ -462,14 +477,14 @@ export class MainGameScene extends Phaser.Scene {
     
 
     this.time.delayedCall(50, () => {
-      console.log("10")
+      console.log("Sight Fighter Detection Loaded!")
       enemyShootSafety = this.physics.add.overlap(enemySights, enemyFighters, function collisionDetection(sight, enemy) {
         sight.detection(enemy)
       })
     })
 
     this.time.delayedCall(50, () => {
-      console.log("12")
+      console.log("Enemy Melee Collisions Loaded!")
       meleeHitboxEnemyFighterOverlap = this.physics.add.overlap(enemyFighters, meleeHitbox, function hitEnemyFighter(meleeHitbox, enemy) {
         try {
           //console.log(meleeHitbox.constructor.name);
@@ -848,6 +863,7 @@ export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
 export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
+export let enemyPathScanDetection
 export let enemyLegs
 export let corpses
 export let bullets
@@ -856,6 +872,7 @@ export let mainCamera
 export let cursor;
 export let spaceDown = false
 export let enemySights
+export let enemyPathScanners
 let sparks
 
 let enemyCollisionDetection
