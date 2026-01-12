@@ -12,7 +12,6 @@ import {
 export class MainMenuScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MainMenuScene' });  // Unique key for this scene
-    this.debug = false
     this.music = 0.5
   }
 
@@ -23,6 +22,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.audio('rifle_sfx', '/src/assets/rifle_sfx.mp3');
     this.load.audio('banishing', '/src/assets/Filmmaker - Great Tribulations - 01 Banishing.mp3');
     this.load.image('background', '/src/assets/tiled-bg.png');
+    this.load.image('wall', '/src/assets/wall.png');
     this.load.spritesheet('legs', '/src/assets/player-walk.png', {
       frameWidth: 49,
       frameHeight: 49,
@@ -134,34 +134,50 @@ export class MainMenuScene extends Phaser.Scene {
     cursor.y = 10
     cursor.setAlpha(0)
     // Add a title or logo to the menu
-    this.add.text(0, -200, 'Main Menu', { fontSize: '48px', fill: '#fff' }).setOrigin(0.5);
 
     // Add a "Start Game" button
-    let startButton = this.add.text(0, -100, 'Start Game', { fontSize: '32px', fill: '#fff' })
+    this.add.text(0, 200, 'START', {
+      backgroundColor: '#310000ff',
+      fontSize: '32px',
+      fontFamily: "sans-serif",
+      fill: '#ffffffff'
+    })
       .setOrigin(0.5)
       .setInteractive()  // Make the text interactive (clickable)
       .on('pointerdown', () => this.scene.start('MainGameScene'));  // On click, start the game scene
 
-    let debugButton = this.add.text(0, 0, 'Toggle Debug: ' + MainMenuScene.debug, { fontSize: '32px', fill: '#fff' })
+    this.add.text(0, -200, 'top-down-shooter-v2', {
+      fontSize: '32px',
+      fontFamily: "sans-serif",
+      fill: '#ffffffff'
+    })
       .setOrigin(0.5)
       .setInteractive()  // Make the text interactive (clickable)
-      .on('pointerdown', () => {
-        MainMenuScene.debug = !MainMenuScene.debug
-        this.scene.restart()
-      });  // On click, start the game scene
+      .on('pointerdown', () => this.scene.start('MainGameScene'));  // On click, start the game scene
 
-    let musicButton = this.add.text(0, 100, 'Toggle Music: ' + MainMenuScene.music, { fontSize: '32px', fill: '#fff' })
+    this.add.text(-100, -100,
+      'MOVEMENT:', { align: 'center', fontSize: '32px', fill: '#ffffffff', fontFamily: "sans-serif", })
       .setOrigin(0.5)
-      .setInteractive()  // Make the text interactive (clickable)
-      .on('pointerdown', () => {
-        if (MainMenuScene.music == 0.5) {
-          MainMenuScene.music = 0
-        } else {
-          MainMenuScene.music = 0.5
-        }
 
-        this.scene.restart()
-      });  // On click, start the game scene
+    this.add.text(100, -100,
+      '[W]\n[A][S][D]', { align: 'center', fontSize: '32px', fill: '#00ff2aff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+
+    this.add.text(-120, 0,
+      'ATTACK:', { align: 'center', fontSize: '32px', fill: '#ffffffff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+
+    this.add.text(100, 0,
+      '[LEFT CLICK]', { align: 'center', fontSize: '32px', fill: '#00ff2aff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+
+    this.add.text(-112, 100,
+      'COLLECT:', { align: 'center', fontSize: '32px', fill: '#ffffffff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+
+    this.add.text(100, 100,
+      '[SPACEBAR]', { align: 'center', fontSize: '32px', fill: '#00ff2aff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
 
     this.input.on(`pointermove`, (pointer) => {
       cursorMoving = true
@@ -235,7 +251,7 @@ export class MainGameScene extends Phaser.Scene {
     player = this.physics.add.sprite(0, 0, 'player');
     player.setDepth(1)
 
-    this.background = this.add.tileSprite(-1000, -1000, 5000, 5000, 'background');
+    this.background = this.add.tileSprite(-2500, -2500, 5000, 5000, 'background');
     this.background.setOrigin(0, 0);
 
 
@@ -330,13 +346,13 @@ export class MainGameScene extends Phaser.Scene {
 
     walls = this.physics.add.group({
       classType: Wall,
-      maxSize: 1000,
+      maxSize: 1200,
       runChildUpdate: true,
     });
 
     corpses = this.physics.add.group({
       classType: Corpse,
-      maxSize: enemyFighters.maxSize*3,
+      maxSize: enemyFighters.maxSize * 3,
       runChildUpdate: true,
     });
 
@@ -348,8 +364,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(50, () => {
       console.log("Enemy Fighter Collisions Loaded!")
-      enemyFighterCollision = this.physics.add.collider(enemyFighters, enemyFighters, function response(e1, e2) {
-      });
+      enemyFighterCollision = this.physics.add.collider(enemyFighters, enemyFighters, function response(e1, e2) { });
     })
 
 
@@ -440,7 +455,7 @@ export class MainGameScene extends Phaser.Scene {
       })
     })
 
-     this.time.delayedCall(50, () => {
+    this.time.delayedCall(50, () => {
       //console.log("10")
       enemyWallOverlap = this.physics.add.overlap(walls, enemyFighters, function enemyWallOverlap(wall, enemy) {
         //enemy.divert(wall)
@@ -474,7 +489,7 @@ export class MainGameScene extends Phaser.Scene {
       })
     })
 
-    
+
 
     this.time.delayedCall(50, () => {
       console.log("Sight Fighter Detection Loaded!")
@@ -599,9 +614,9 @@ export class MainGameScene extends Phaser.Scene {
         setWeapon(weapon.type)
       }
       if (!pointer.leftButtonDown()) {
-      //   if (weapon.type == "pistol") {
-      //   shootBullet(player.rotation); 
-      // }
+        //   if (weapon.type == "pistol") {
+        //   shootBullet(player.rotation); 
+        // }
         shooting = false
       }
       if (!pointer.leftButtonDown() && weapon.type == "none") {
@@ -619,6 +634,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+
     //frames = frames + (Math.ceil(time/100000))
     frames++
     //console.log(delta)
@@ -757,6 +773,8 @@ export class MainGameScene extends Phaser.Scene {
         direction.normalize();
       }
 
+
+
       if (this.w.isDown || this.a.isDown || this.s.isDown || this.d.isDown) {
         legs.play("walk", true)
         player_acceleration = 10000 + upgrade.acceleration
@@ -778,6 +796,25 @@ export class MainGameScene extends Phaser.Scene {
         legs.setFrame(11)
         player.body.setAcceleration(0, 0);
         legs.body.setAcceleration(0, 0);
+      }
+
+      if (frames <= 100) {
+        console.log(player.x + " : " + player.y)
+        legs.play("walk", true)
+        direction.y -= 1
+        direction.x -= 1
+        player_acceleration = 10000 + upgrade.acceleration
+        moveToPointer = true
+
+        const vx = player.body.velocity.x;
+        const vy = player.body.velocity.y;
+
+        if (vx !== 0 || vy !== 0) {
+          legs.rotation = Math.atan2(vy, vx) + Phaser.Math.DegToRad(90);
+        }
+
+        player.body.acceleration.x = direction.x * player_acceleration;
+        player.body.acceleration.y = direction.y * player_acceleration;
       }
 
       const velocity = (Math.abs(player.body.velocity.x) + Math.abs(player.body.velocity.y))
@@ -998,8 +1035,8 @@ function spawndashLine() {
 
 function spawnWall() {
   const wall = walls.get(1000, 1000)
-  const x = 200 * (Phaser.Math.Between(player.x - 200, player.x + 200))
-  const y = 200 * (Phaser.Math.Between(player.y - 200, player.y + 200))
+  const x = 200 * (Phaser.Math.Between(0 - 2000, 0 + 2000))
+  const y = 200 * (Phaser.Math.Between(0 - 2000, 0 + 2000))
   const w = 5000
   const roll = Phaser.Math.Between(0, 3)
   const loop = Phaser.Math.Between(0, 10)
@@ -1038,7 +1075,7 @@ async function recursiveSpawnWall(x, y, loop, roll) {
     wall.spawn(x, y, 200, 200)
   }
 
-  if (loop <= 14) {
+  if (loop <= 12) {
     recursiveSpawnWall(x, y, loop, roll)
   } else if (loop <= 19) {
     recursiveSpawnWall(gap * Phaser.Math.Between(-65, 65), gap * Phaser.Math.Between(-65, 65), loop, roll)
