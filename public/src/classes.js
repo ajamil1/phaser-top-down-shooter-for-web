@@ -135,24 +135,25 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     this.setScale(2)
     this.selected = false
     this.lifespan = 0
-    this.id = Phaser.Math.Between(0, 2);
+    this.id = Phaser.Math.Between(0, 3);
     this.body.setCircle(this.body.width / 2);
   }
 
 
   sprite() {
-    let shotgun = 0xff0000;
-    let pistol = 0x002eff;
-    let assaultRifle = 0xed00ff
+   
     switch (this.id) {
-      case 0: // spread
+      case 0:
         this.setFrame(0)
         break
-      case 1: // firerate
+      case 1: 
         this.setFrame(1)
         break;
-      case 2: // firerate
+      case 2: 
         this.setFrame(2)
+        break;
+      case 3: 
+        this.setFrame(3)
         break;
       default:
         this.setTint(0xed00ff)

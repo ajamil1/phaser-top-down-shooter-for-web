@@ -20,6 +20,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.audio('shotgun_sfx', '/src/assets/shotgun_sfx.mp3');
     this.load.audio('pistol_sfx', '/src/assets/pistol_sfx.mp3');
     this.load.audio('rifle_sfx', '/src/assets/rifle_sfx.mp3');
+    this.load.audio('sword_sfx', '/src/assets/sword_sfx.mp3');
     this.load.audio('banishing', '/src/assets/Filmmaker - Great Tribulations - 01 Banishing.mp3');
     this.load.image('background', '/src/assets/tiled-bg.png');
     this.load.image('wall', '/src/assets/wall.png');
@@ -32,6 +33,13 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.spritesheet('player', '/src/assets/player-sprites.png', {
       frameWidth: 49,
       frameHeight: 49,
+      margin: 0,
+      spacing: 0
+    });
+
+    this.load.spritesheet('player-sword', '/src/assets/player-sprites-big.png', {
+      frameWidth: 70,
+      frameHeight: 70,
       margin: 0,
       spacing: 0
     });
@@ -57,9 +65,6 @@ export class MainMenuScene extends Phaser.Scene {
     // this.load.spritesheet(key, url, frameConfig, xhrSettings);
     this.load.image('pistol', '/src/assets/pistol.png')
     this.load.image('cursor', '/src/assets/cursor.png')
-
-
-
   }
 
   create() {
@@ -75,6 +80,12 @@ export class MainMenuScene extends Phaser.Scene {
       allowMultiple: true
     });
     rifle_sfx = this.sound.add('rifle_sfx', {
+      loop: false,
+      volume: 0.5,
+      allowMultiple: true
+    });
+
+    sword_sfx = this.sound.add('sword_sfx', {
       loop: false,
       volume: 0.5,
       allowMultiple: true
@@ -98,6 +109,20 @@ export class MainMenuScene extends Phaser.Scene {
       key: "right-punch",
       frames: this.anims.generateFrameNumbers("player", { frames: [4, 3, 3, 0] }),
       frameRate: 8,
+      repeat: 0
+    })
+
+    this.anims.create({
+      key: "left-slash",
+      frames: this.anims.generateFrameNumbers("player", { frames: [23, 22, 21, 20, 15] }),
+      frameRate: 32,
+      repeat: 0
+    })
+
+    this.anims.create({
+      key: "right-slash",
+      frames: this.anims.generateFrameNumbers("player", { frames: [16, 17, 18, 19, 24] }),
+      frameRate: 32,
       repeat: 0
     })
 
@@ -393,6 +418,13 @@ export class MainGameScene extends Phaser.Scene {
               weapon.firerate = 150
               player.setFrame(6)
               break;
+            case 3:
+              weapon.type = "sword"
+              weapon.ammo = 25
+              weapon.firemode = "auto"
+              weapon.firerate = 150
+              player.setFrame(15)
+              break;
             default:
               weapon.type = "none"
               weapon.ammo = 25
@@ -581,16 +613,51 @@ export class MainGameScene extends Phaser.Scene {
             break
         }
       }
+      if (pointer.leftButtonDown() && weapon.type == "sword") {
+        sword_sfx.play()
+        sword_sfx.setDetune(Phaser.Math.Between(-300, 300));
+        meleeHitbox.body.setCircle(70);
+        meleeHitbox.body.setOffset(meleeHitbox.width / 2 - 70, meleeHitbox.height / 2 - 70)
+        switch (meleeFrame) {
+          case 0:
+            if (player.anims.currentAnim?.key !== 'left-slash') {
+              meleeHitbox.body.checkCollision.none = false
+              meleeComplete = false
+              player.setFrame(19)
+              player.play("left-slash", true)
+              meleeFrame = 1
+            }
+            break
+          case 1:
+            if (player.anims.currentAnim?.key !== 'right-slash') {
+              meleeHitbox.body.checkCollision.none = false
+              meleeComplete = false
+              player.setFrame(20)
+              player.play("right-slash", true)
+              meleeFrame = 0
+            }
+            break
+        }
+      }
 
     });
 
     player.on('animationcomplete', (animation, frame) => {
-      if (animation.key != "left-punch" && animation.key != "right-punch" && weapon.type != "none") {
+      meleeHitbox.body.setCircle(30);
+      meleeHitbox.body.setOffset(meleeHitbox.width / 2 - 30, meleeHitbox.height / 2 - 30)
+      if (animation.key != "left-punch" && animation.key != "right-punch" && weapon.type != "none" && weapon.type != "sword") {
         setWeapon(weapon.type)
         meleeHitbox.body.checkCollision.none = true;
       } else if (animation.key == "left-punch" || animation.key == "right-punch") {
         console.log(animation.key)
         setWeapon(weapon.type)
+        meleeHitbox.body.checkCollision.none = true;
+        meleeHitbox.body.setCircle(30);
+        meleeHitbox.body.setOffset(meleeHitbox.width / 2 - 30, meleeHitbox.height / 2 - 30)
+      }
+      else if (animation.key == "left-slash" || animation.key == "right-slash") {
+        console.log(animation.key)
+        //setWeapon(weapon.type)
         meleeHitbox.body.checkCollision.none = true;
       }
     });
@@ -605,12 +672,10 @@ export class MainGameScene extends Phaser.Scene {
       if (frames >= 100) {
         cursor.setAlpha((cursorToPointer - 50) / 70)
       }
-
-
     })
 
     this.input.on('pointerup', (pointer) => {
-      if (weapon.type != "none") {
+      if (weapon.type != "none" && weapon.type != "sword") {
         setWeapon(weapon.type)
       }
       if (!pointer.leftButtonDown()) {
@@ -870,7 +935,7 @@ window.addEventListener('resize', () => {
 
 export let player;
 export let weapon = {
-  type: "pistol",
+  type: "sword",
   firemode: "semi",
   firerate: 90,
   ammo: 4,
@@ -939,6 +1004,7 @@ let enemyFighters
 let pistol_sfx
 let shotgun_sfx
 let rifle_sfx
+let sword_sfx
 let worldBounds = { width: 10000, height: 10000 };  // Large world size
 let moveToPointer = false;
 let shooting = false
@@ -1094,6 +1160,9 @@ function setWeapon(id) {
     case "shotgun":
       player.setFrame(7)
       break;
+    case "sword":
+      player.setFrame(15)
+      break;
     default:
       player.setFrame(0)
       break;
@@ -1143,7 +1212,8 @@ function shootBullet(rotation) {
       }
       break
     default:
-      console.log(weapon.type)
+
+
       break
   }
 }
