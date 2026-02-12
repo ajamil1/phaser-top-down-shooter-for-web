@@ -1019,17 +1019,23 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
       this.reflect = true
       const angle = this.rotation
 
+
       this.scaleX = -this.scaleX
       this.setTint(0xffff69)
 
       // Calculate direction to fire the bullet
-      this.body.velocity.x = -0.8 * this.body.velocity.x
-      this.body.velocity.y = -0.8 * this.body.velocity.y
+      //this.body.velocity.x = -0.8 * (this.body.velocity.x + Phaser.Math.Between(-3000, 3000))
+      //this.body.velocity.y = -0.8 * (this.body.velocity.y + Phaser.Math.Between(-3000, 3000))
+
+      this.body.velocity.x = -0.8 * Math.cos(this.rotation += Phaser.Math.DegToRad(Phaser.Math.Between(-90,90))) * this.velocity
+      this.body.velocity.y = -0.8 * Math.sin(this.rotation += Phaser.Math.DegToRad(Phaser.Math.Between(-90,90))) * this.velocity
+
+
       // Add the player's velocity to the bullet's velocity
       this.body.velocity.x = this.body.velocity.x + (player.body.velocity.x / 2);
       this.body.velocity.y = this.body.velocity.y + (player.body.velocity.y / 2);
 
-      this.setRotation(angle);
+      this.setRotation(Phaser.Math.Angle.Between(0, 0, -this.body.velocity.x, -this.body.velocity.y));
     }
 
   }
