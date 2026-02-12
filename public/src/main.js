@@ -100,15 +100,15 @@ export class MainMenuScene extends Phaser.Scene {
 
     this.anims.create({
       key: "left-punch",
-      frames: this.anims.generateFrameNumbers("player", { frames: [2, 1, 1, 0] }),
-      frameRate: 8,
+      frames: this.anims.generateFrameNumbers("player", { frames: [2, 2, 1, 1, 1, 1, 1, 1, 0] }),
+      frameRate: 32,
       repeat: 0
     })
 
     this.anims.create({
       key: "right-punch",
-      frames: this.anims.generateFrameNumbers("player", { frames: [4, 3, 3, 0] }),
-      frameRate: 8,
+      frames: this.anims.generateFrameNumbers("player", { frames: [4, 4, 3, 3, 3, 3, 3, 3, 0] }),
+      frameRate: 32,
       repeat: 0
     })
 
@@ -161,7 +161,7 @@ export class MainMenuScene extends Phaser.Scene {
     // Add a title or logo to the menu
 
     // Add a "Start Game" button
-    this.add.text(0, 200, 'START', {
+    this.add.text(0, 300, 'START', {
       backgroundColor: '#310000ff',
       fontSize: '32px',
       fontFamily: "sans-serif",
@@ -179,6 +179,20 @@ export class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5)
       .setInteractive()  // Make the text interactive (clickable)
       .on('pointerdown', () => this.scene.start('MainGameScene'));  // On click, start the game scene
+
+      this.add.text(-100, 200,
+      'MUSIC:', { align: 'center', fontSize: '32px', fill: '#ffffffff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+
+    this.add.text(100, 200,
+      musicVolume, { align: 'center', fontSize: '32px', fill: '#00ff2aff', fontFamily: "sans-serif", })
+      .setOrigin(0.5)
+      .setInteractive()  // Make the text interactive (clickable)
+      .on('pointerdown', () => {
+        if (musicVolume = 0.5) {musicVolume = 0}
+        else {musicVolume = 0.5}
+        this.setText(musicVolume)
+      });  // On click, start the game scene
 
     this.add.text(-100, -100,
       'MOVEMENT:', { align: 'center', fontSize: '32px', fill: '#ffffffff', fontFamily: "sans-serif", })
@@ -254,7 +268,7 @@ export class MainGameScene extends Phaser.Scene {
 
     banishing = this.sound.add('banishing', {
       loop: true,
-      volume: 0.5,
+      volume: musicVolume,
       allowMultiple: true
     });
 
@@ -536,6 +550,20 @@ export class MainGameScene extends Phaser.Scene {
         try {
           //console.log(meleeHitbox.constructor.name);
           enemy.hit(meleeHitbox)
+        }
+        catch (e) {
+          console.log(e)
+        }
+      })
+    })
+    this.time.delayedCall(50, () => {
+      console.log("Enemy Melee Collisions Loaded!")
+      meleeHitboxBulletOverlap = this.physics.add.overlap(meleeHitbox, bullets, function hitEnemyFighter( meleeHitbox, bullet) {
+        try {
+          if (weapon.type = "sword") {
+            bullet.bulletReflected()
+          }
+          
         }
         catch (e) {
           console.log(e)
@@ -965,6 +993,7 @@ export let playerEnemyFighterCollision
 export let bulletEnemyFighterOverlap
 export let playerEnemyBulletOverlap
 export let meleeHitboxEnemyFighterOverlap
+export let meleeHitboxBulletOverlap
 export let enemyPathScanDetection
 export let enemyLegs
 export let corpses
@@ -975,6 +1004,7 @@ export let cursor;
 export let spaceDown = false
 export let enemySights
 export let enemyPathScanners
+let musicVolume = 0.5
 let sparks
 
 let enemyCollisionDetection
@@ -1212,7 +1242,13 @@ function shootBullet(rotation) {
       }
       break
     default:
+      // const bullet = bullets.get(player.x, player.y);
+      // mainCamera.shake(50, 0.003);
+      // //rifle_sfx.play()
+      // bullet.fire(rotation, player.x, player.y, 5000, 5500, 0.07, 0.09, 80, false);
+      // weapon.ammo++
 
+      //rifle_sfx.setDetune(random);
 
       break
   }
