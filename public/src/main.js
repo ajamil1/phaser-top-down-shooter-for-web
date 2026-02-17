@@ -963,7 +963,7 @@ window.addEventListener('resize', () => {
 
 export let player;
 export let weapon = {
-  type: "sword",
+  type: "pistol",
   firemode: "semi",
   firerate: 90,
   ammo: 4,
