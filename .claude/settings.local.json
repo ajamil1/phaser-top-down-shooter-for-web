@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\" -Recurse -Force)",
+      "Bash(Select-Object FullName)",
+      "Bash(Sort-Object FullName)",
+      "Bash(Format-Table -AutoSize)",
+      "Bash(grep -E \"\\\\.\\(js|json|html|css|md\\)$\")",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(grep -E \"\\\\.\\(md|env|config|json\\)$\")",
+      "Bash(mkdir -p \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\scenes\" \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\entities\" \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\utils\")",
+      "Bash(del \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\classes.js\")",
+      "Bash(node -e \"const p = require\\('./node_modules/phaser/package.json'\\); console.log\\(JSON.stringify\\({main: p.main, module: p.module, exports: p.exports}, null, 2\\)\\)\" --input-type=commonjs)",
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:p.get\\(k\\) for k in ['main','module','exports']}, indent=2\\)\\)\")"
+    ],
+    "additionalDirectories": [
+      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src"
+    ]
+  }
+}
