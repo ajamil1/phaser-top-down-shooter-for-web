@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "easystarjs": "^0.4.4",
-    "phaser": "^3.85.1"
+    "phaser": "^3.85.1",
+    "serve": "^14.2.6"
   }
 }
