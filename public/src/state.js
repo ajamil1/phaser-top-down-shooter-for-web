@@ -14,6 +14,10 @@ export const state = {
     ammo: 9,
   },
 
+  xp: 0,
+  xpToLevel: 100,
+  level: 1,
+
   upgrade: {
     spread: 0,
     firerate: 40,
@@ -43,7 +47,7 @@ export const state = {
   corpses: null,
   sparks: null,
   weapons: null,
-  upgrades: null,
+  xpOrbs: null,
   dashLines: null,
 
   // audio

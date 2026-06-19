@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
-import { spawnSpark, spawnCorpse, spawnWeapon, spawnUpgrade } from '../utils/spawners.js';
+import { spawnSpark, spawnCorpse, spawnWeapon, spawnXP } from '../utils/spawners.js';
 import { enemyShoot } from '../utils/combat.js';
 import { hasLineOfSight } from '../utils/pathfinding.js';
 
@@ -134,7 +134,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
               this.loop = false;
               await spawnCorpse(this.x, this.y, that.rotation, this.body.velocity.x, this.body.velocity.y);
               spawnWeapon(this.x, this.y, this.weapon);
-              if (Phaser.Math.Between(0, 2) === 0) spawnUpgrade(this.x, this.y);
+              spawnXP(this.x, this.y);
             }
             this.death = true;
           } else {
@@ -165,7 +165,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
               this.loop = false;
               await spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y);
               spawnWeapon(this.x, this.y, this.weapon);
-              if (Phaser.Math.Between(0, 2) === 0) spawnUpgrade(this.x, this.y);
+              spawnXP(this.x, this.y);
             }
             this.death = true;
             that.body.checkCollision.none = false;
@@ -202,7 +202,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
             if (!this.death && that.isPlayerMelee) {
               await spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y);
               spawnWeapon(this.x, this.y, this.weapon);
-              if (Phaser.Math.Between(0, 2) === 0) spawnUpgrade(this.x, this.y);
+              spawnXP(this.x, this.y);
             }
             this.death = true;
           }

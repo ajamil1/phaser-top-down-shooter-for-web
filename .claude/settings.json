@@ -4,7 +4,16 @@
       "Bash(node -e ' *)",
       "Bash(npm run *)",
       "WebFetch(domain:docs.withnubo.com)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\); console.log\\('lockfileVersion:', l.lockfileVersion\\); console.log\\('has esbuild linux:', !!l.packages?.['node_modules/@esbuild/linux-x64']\\)\")",
+      "Bash(cd \"b:/git-master/general_b/Web Projects/top-down-shooter-for-web\" && rm package-lock.json && npm install)",
+      "Bash(node -e \"const l=require\\('./package-lock.json'\\); console.log\\('has linux:', !!l.packages?.['node_modules/@esbuild/linux-x64']\\)\")",
+      "Bash(rm package-lock.json)",
+      "Bash(echo \"os=*\")"
+    ],
+    "additionalDirectories": [
+      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src3d",
+      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web"
     ]
   }
 }

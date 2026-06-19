@@ -48,6 +48,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.anims.create({ key: 'right-punch', frames: this.anims.generateFrameNumbers('player', { frames: [4,4,3,3,3,3,3,3,0] }), frameRate: 32, repeat: 0 });
     this.anims.create({ key: 'left-slash', frames: this.anims.generateFrameNumbers('player', { frames: [23,22,21,20,15] }), frameRate: 32, repeat: 0 });
     this.anims.create({ key: 'right-slash', frames: this.anims.generateFrameNumbers('player', { frames: [16,17,18,19,24] }), frameRate: 32, repeat: 0 });
+    this.anims.create({ key: 'spin-attack', frames: this.anims.generateFrameNumbers('player', { frames: [20,21,22,23,16,17,18,19,24,15] }), frameRate: 46, repeat: 0 });
     this.anims.create({ key: 'knockdown', frames: this.anims.generateFrameNumbers('player', { frames: [10,11,12,12,13,14] }), frameRate: 20, repeat: 0 });
 
     state.player = this.physics.add.sprite(0, 0, 'player');

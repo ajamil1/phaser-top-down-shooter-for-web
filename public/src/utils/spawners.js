@@ -48,43 +48,62 @@ export function spawnDashLine() {
   if (line) line.spawn(player.rotation / 2 + -Math.PI / 2);
 }
 
-function _startChain(walls, x0, y0, roll) {
-  const gap = 66;
-  const dx = (roll === 0 || roll === 2) ? gap : 0;
-  const dy = (roll === 1 || roll === 3) ? gap : 0;
-  for (let i = 0; i < 3; i++) {
-    const w = walls.get(x0 + dx * i, y0 + dy * i);
-    if (w) w.spawn(x0 + dx * i, y0 + dy * i, 200, 200);
+const GAP = 66;
+
+function _wallAt(children, x, y) {
+  for (let i = 0; i < children.length; i++) {
+    const w = children[i];
+    if (w.active && Math.abs(w.x - x) < 2 && Math.abs(w.y - y) < 2) return true;
   }
-  const loop = Phaser.Math.Between(0, 10);
+  return false;
+}
+
+// Fill any cardinal-direction 1-block gaps adjacent to the freshly placed wall.
+function _fillGaps(walls, x, y) {
+  const ch = walls.getChildren();
+  const dirs = [[GAP, 0], [-GAP, 0], [0, GAP], [0, -GAP]];
+  for (const [ddx, ddy] of dirs) {
+    if (_wallAt(ch, x + ddx * 2, y + ddy * 2) && !_wallAt(ch, x + ddx, y + ddy)) {
+      const w = walls.get(x + ddx, y + ddy);
+      if (w) w.spawn(x + ddx, y + ddy, 200, 200);
+    }
+  }
+}
+
+function _place(walls, x, y) {
+  const w = walls.get(x, y);
+  if (w) { w.spawn(x, y, 200, 200); _fillGaps(walls, x, y); }
+}
+
+function _startChain(walls, x0, y0, roll) {
+  const dx = (roll === 0 || roll === 2) ? GAP : 0;
+  const dy = (roll === 1 || roll === 3) ? GAP : 0;
+  for (let i = 0; i < 3; i++) {
+    _place(walls, x0 + dx * i, y0 + dy * i);
+  }
   _recursiveSpawnWall(walls, x0 + dx * 2, y0 + dy * 2, roll);
 }
 
 export function spawnWall() {
   const { walls } = state;
   const roll = Phaser.Math.Between(0, 3);
-  const gap = 66;
-  _startChain(walls, gap * Phaser.Math.Between(-65, 65), gap * Phaser.Math.Between(-65, 65), roll);
+  _startChain(walls, GAP * Phaser.Math.Between(-65, 65), GAP * Phaser.Math.Between(-65, 65), roll);
 }
 
 async function _recursiveSpawnWall(walls, x, y, roll) {
   const wall = await walls.get(x, y);
   const loop = Phaser.Math.Between(0, 20);
-  const gap = 66;
+  const dx = (roll === 0 || roll === 2) ? GAP : 0;
+  const dy = (roll === 1 || roll === 3) ? GAP : 0;
   if (wall) {
-    switch (roll) {
-      case 0: x += gap; break;
-      case 1: y += gap; break;
-      case 2: x += gap; break;
-      case 3: y += gap; break;
-    }
+    x += dx; y += dy;
     wall.spawn(x, y, 200, 200);
+    _fillGaps(walls, x, y);
   }
   if (loop <= 12) {
     _recursiveSpawnWall(walls, x, y, roll);
   } else if (loop <= 19) {
-    // New chain at a fresh position — minimum 3 tiles, gap guaranteed by new anchor
-    _startChain(walls, gap * Phaser.Math.Between(-65, 65), gap * Phaser.Math.Between(-65, 65), Phaser.Math.Between(0, 3));
+    _startChain(walls, GAP * Phaser.Math.Between(-65, 65), GAP * Phaser.Math.Between(-65, 65), Phaser.Math.Between(0, 3));
   }
 }
 
@@ -189,22 +208,10 @@ export function clearArena() {
 
 // ── Upgrades ───────────────────────────────────────────────────────────────────
 
-// Common appear twice, rare appear once
-const UPGRADE_TYPES = [
-  'firerate', 'firerate',
-  'reload',   'reload',
-  'ammo',     'ammo',
-  'accuracy', 'accuracy',
-  'multishot',
-  'ricochet',
-  'ammoeff',
-];
-
-export function spawnUpgrade(x, y) {
-  const { upgrades, player } = state;
-  const type = UPGRADE_TYPES[Phaser.Math.Between(0, UPGRADE_TYPES.length - 1)];
-  const upgrade = upgrades.get(player.x, player.y);
-  if (upgrade) upgrade.spawn(x, y, type);
+export function spawnXP(x, y) {
+  const { xpOrbs } = state;
+  const orb = xpOrbs.get(x, y);
+  if (orb) orb.spawn(x, y);
 }
 
 export function spawnWeapon(x, y, enemyWeaponId) {

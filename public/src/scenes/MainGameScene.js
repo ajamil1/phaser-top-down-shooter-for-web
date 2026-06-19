@@ -3,7 +3,8 @@ import { state } from '../state.js';
 import { DashLine } from '../entities/DashLine.js';
 import { Wall } from '../entities/Wall.js';
 import { Weapon } from '../entities/Weapon.js';
-import { Upgrade, buildUpgradeTextures } from '../entities/Upgrade.js';
+import { UPGRADE_DEFS, UPGRADE_TYPES } from '../entities/Upgrade.js';
+import { XPOrb } from '../entities/XPOrb.js';
 import { EnemyFighter } from '../entities/EnemyFighter.js';
 import { Bullet } from '../entities/Bullet.js';
 import { EnemyBullet } from '../entities/EnemyBullet.js';
@@ -39,6 +40,11 @@ export class MainGameScene extends Phaser.Scene {
     this._afterImages = [];
     this._lastAfterImageTime = 0;
     this._dashPips = [];
+    this._swordSwingCooldown = 0;
+    this._swordSpinCooldown = 0;
+    this._spinning = false;
+    this._modalActive = false;
+    this._modalObjects = [];
     this.reload = {
       active: false,
       ejecting: false,
@@ -132,7 +138,7 @@ export class MainGameScene extends Phaser.Scene {
     state.walls = this.physics.add.group({ classType: Wall, maxSize: 600, runChildUpdate: true });
     state.corpses = this.physics.add.group({ classType: Corpse, maxSize: state.enemyFighters.maxSize * 3, runChildUpdate: true });
     state.weapons = this.physics.add.group({ classType: Weapon, maxSize: 2000, runChildUpdate: true });
-    state.upgrades = this.physics.add.group({ classType: Upgrade, maxSize: 200, runChildUpdate: true });
+    state.xpOrbs = this.physics.add.group({ classType: XPOrb, maxSize: 200, runChildUpdate: true });
     state.enemySights = this.physics.add.group({ classType: EnemySight, maxSize: -1, runChildUpdate: true });
     state.enemyPathScanners = this.physics.add.group({ classType: EnemyPathScan, maxSize: -1, runChildUpdate: true });
 
@@ -158,6 +164,11 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    this.xpBarGfx = this.add.graphics().setScrollFactor(0).setDepth(10);
+    this.levelText = this.add.text(this.scale.width - 12, 10, 'LVL 1', {
+      fontSize: '14px', fontFamily: 'monospace', fill: '#00ff88',
+    }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
+
   }
 
   _setupCollisions() {
@@ -169,11 +180,7 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.time.delayedCall(delay, () => {
-      this.physics.add.collider(state.upgrades, state.walls);
-    });
-
-    this.time.delayedCall(delay, () => {
-      this.physics.add.collider(state.upgrades, state.upgrades);
+      this.physics.add.collider(state.xpOrbs, state.walls);
     });
 
     this.time.delayedCall(delay, () => {
@@ -211,20 +218,11 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.time.delayedCall(delay, () => {
-      this.physics.add.overlap(state.player, state.upgrades, (player, upgradeObj) => {
-        if (!upgradeObj.active) return;
-        upgradeObj.setActive(false);
-        upgradeObj.setVisible(false);
-        upgradeObj.body.checkCollision.none = true;
-        switch (upgradeObj.upgradeType) {
-          case 'multishot': state.upgrade.multishot++; break;
-          case 'firerate':  state.upgrade.firerateBonus++; break;
-          case 'reload':    state.upgrade.reloadZone++; break;
-          case 'ammo':      state.upgrade.ammoBonus += 3; break;
-          case 'accuracy':  state.upgrade.accuracy++; break;
-          case 'ricochet':     state.upgrade.ricochet++; break;
-          case 'ammoeff':      state.upgrade.ammoEfficiency++; break;
-        }
+      this.physics.add.overlap(state.player, state.xpOrbs, (_player, orb) => {
+        if (!orb.active) return;
+        orb.setActive(false);
+        orb.body.checkCollision.none = true;
+        this._addXP(10);
       });
     });
 
@@ -355,6 +353,11 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerdown', (pointer) => {
+      if (this._modalActive) return;
+      if (pointer.button === 2) {
+        if (state.weapon.type === 'sword') this._doSpinAttack();
+        return;
+      }
       this.shooting = true;
       if (!pointer.leftButtonDown()) return;
       if (state.weapon.firemode === 'semi') {
@@ -375,13 +378,19 @@ export class MainGameScene extends Phaser.Scene {
 
       const isPunch = animation.key === 'left-punch' || animation.key === 'right-punch';
       const isSlash = animation.key === 'left-slash' || animation.key === 'right-slash';
+      const isSpin  = animation.key === 'spin-attack';
+
+      if (isSpin) {
+        this._spinning = false;
+        this.meleeHitbox.body.checkCollision.none = true;
+        setWeapon(state.weapon.type);
+        return;
+      }
 
       if (isPunch || (!isSlash && state.weapon.type !== 'none' && state.weapon.type !== 'sword')) {
         setWeapon(state.weapon.type);
       }
-      if (!isSlash) {
-        this.meleeHitbox.body.checkCollision.none = true;
-      }
+      this.meleeHitbox.body.checkCollision.none = true;
     });
 
     this.input.on('pointermove', (pointer) => {
@@ -411,6 +420,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   _doMeleeSword() {
+    if (this._swordSwingCooldown > 0 || this._swordSpinCooldown > 0 || this._spinning) return;
     const { player, sword_sfx } = state;
     sword_sfx.play();
     sword_sfx.setDetune(Phaser.Math.Between(-300, 300));
@@ -423,7 +433,22 @@ export class MainGameScene extends Phaser.Scene {
       player.setFrame(startFrame);
       player.play(nextAnim, true);
       this.meleeFrame = this.meleeFrame === 0 ? 1 : 0;
+      this._swordSwingCooldown = 200;
     }
+  }
+
+  _doSpinAttack() {
+    if (this._swordSpinCooldown > 0 || this._spinning) return;
+    const { player, sword_sfx } = state;
+    sword_sfx.play();
+    sword_sfx.setDetune(Phaser.Math.Between(-200, 200));
+    this._spinning = true;
+    this._swordSpinCooldown = 1200;
+    this._swordSwingCooldown = 1200;
+    this.meleeHitbox.body.setCircle(110);
+    this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 110, this.meleeHitbox.height / 2 - 110);
+    this.meleeHitbox.body.checkCollision.none = false;
+    player.play('spin-attack', true);
   }
 
   _tryDash() {
@@ -478,6 +503,9 @@ export class MainGameScene extends Phaser.Scene {
 
     if (state.frames < 50) return;
 
+    if (this._swordSwingCooldown > 0) this._swordSwingCooldown -= delta;
+    if (this._swordSpinCooldown > 0) this._swordSpinCooldown -= delta;
+
     const pointer = this.input.mousePointer;
     state.mainCamera = this.cameras.main;
 
@@ -512,8 +540,8 @@ export class MainGameScene extends Phaser.Scene {
 
     cursor.x = targetX;
     cursor.y = targetY;
-    this.meleeHitbox.x = this.meleeX;
-    this.meleeHitbox.y = this.meleeY;
+    this.meleeHitbox.x = this._spinning ? player.x : this.meleeX;
+    this.meleeHitbox.y = this._spinning ? player.y : this.meleeY;
 
     if (this.cursorMoving) {
       state.angleToPointer = Phaser.Math.Angle.Between(player.x, player.y, cursor.x, cursor.y);
@@ -611,6 +639,136 @@ export class MainGameScene extends Phaser.Scene {
     this._drawReloadBar();
     this._drawAmmoBlocks();
     this._updateHUD();
+    this._drawXPBar();
+  }
+
+  // ── XP / Level-up ─────────────────────────────────────────────────────────────
+
+  _addXP(amount) {
+    state.xp += amount;
+    if (!this._modalActive) this._checkLevelUp();
+  }
+
+  _checkLevelUp() {
+    if (state.xp >= state.xpToLevel) {
+      state.xp -= state.xpToLevel;
+      state.level++;
+      state.xpToLevel = 100 + state.level * 30;
+      this._showLevelUpModal(this._pickUpgradeChoices());
+    }
+  }
+
+  _pickUpgradeChoices() {
+    const pool = [...UPGRADE_TYPES];
+    const choices = [];
+    while (choices.length < 3 && pool.length > 0) {
+      const idx = Phaser.Math.Between(0, pool.length - 1);
+      const type = pool[idx];
+      if (!choices.includes(type)) choices.push(type);
+      for (let i = pool.length - 1; i >= 0; i--) {
+        if (pool[i] === type) pool.splice(i, 1);
+      }
+    }
+    return choices;
+  }
+
+  _showLevelUpModal(choices) {
+    this.physics.world.pause();
+    this._modalActive = true;
+    this._modalObjects = [];
+    const push = obj => { this._modalObjects.push(obj); return obj; };
+    const W = this.scale.width, H = this.scale.height;
+
+    push(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.78)
+      .setScrollFactor(0).setDepth(20).setInteractive());
+
+    push(this.add.text(W / 2, H * 0.18, `LEVEL  ${state.level}`, {
+      fontSize: '40px', fontFamily: 'monospace', fill: '#ffffff', fontStyle: 'bold',
+    }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
+
+    push(this.add.text(W / 2, H * 0.27, 'choose an upgrade', {
+      fontSize: '15px', fontFamily: 'monospace', fill: '#666666',
+    }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
+
+    const NAMES = {
+      firerate:  'FIRE RATE',  reload:    'RELOAD',
+      ammo:      'AMMO',       accuracy:  'ACCURACY',
+      multishot: 'MULTISHOT',  ricochet:  'RICOCHET',
+      ammoeff:   'AMMO EFF.',
+    };
+    const DESCS = {
+      firerate:  '+fire speed',   reload:    '+reload zone',
+      ammo:      '+3 max ammo',   accuracy:  '+accuracy',
+      multishot: '+1 bullet',     ricochet:  '+1 bounce',
+      ammoeff:   '+ammo eff.',
+    };
+
+    const cardW = 180, cardH = 230, gap = 28;
+    const totalW = choices.length * cardW + (choices.length - 1) * gap;
+    const startX = (W - totalW) / 2;
+
+    choices.forEach((type, i) => {
+      const def = UPGRADE_DEFS[type];
+      const [r, g, b] = def.rgb;
+      const color = (r << 16) | (g << 8) | b;
+      const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+      const cx = startX + i * (cardW + gap) + cardW / 2;
+      const cy = H * 0.57;
+
+      const bg = push(this.add.rectangle(cx, cy, cardW, cardH, 0x0a0a0a, 0.98)
+        .setScrollFactor(0).setDepth(21).setStrokeStyle(2, color, 0.55));
+
+      push(this.add.rectangle(cx, cy - cardH / 2 + 20, cardW, 40, color, 0.9)
+        .setScrollFactor(0).setDepth(22));
+
+      push(this.add.text(cx, cy - cardH / 2 + 20, def.letter, {
+        fontSize: '22px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ffffff',
+      }).setScrollFactor(0).setDepth(23).setOrigin(0.5));
+
+      push(this.add.text(cx, cy + 10, NAMES[type] ?? type.toUpperCase(), {
+        fontSize: '15px', fontFamily: 'monospace', fill: colorHex, align: 'center',
+        wordWrap: { width: cardW - 20 },
+      }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
+
+      push(this.add.text(cx, cy + 46, DESCS[type] ?? '', {
+        fontSize: '12px', fontFamily: 'monospace', fill: '#777777', align: 'center',
+      }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
+
+      const zone = push(this.add.zone(cx, cy, cardW, cardH)
+        .setScrollFactor(0).setDepth(24).setInteractive());
+      zone.on('pointerover', () => bg.setFillStyle(0x1e1e1e, 0.98));
+      zone.on('pointerout',  () => bg.setFillStyle(0x0a0a0a, 0.98));
+      zone.on('pointerdown', () => this._applyLevelUpChoice(type));
+    });
+  }
+
+  _applyLevelUpChoice(type) {
+    switch (type) {
+      case 'multishot': state.upgrade.multishot++; break;
+      case 'firerate':  state.upgrade.firerateBonus++; break;
+      case 'reload':    state.upgrade.reloadZone++; break;
+      case 'ammo':      state.upgrade.ammoBonus += 3; break;
+      case 'accuracy':  state.upgrade.accuracy++; break;
+      case 'ricochet':  state.upgrade.ricochet++; break;
+      case 'ammoeff':   state.upgrade.ammoEfficiency++; break;
+    }
+    for (const obj of this._modalObjects) obj.destroy();
+    this._modalObjects = [];
+    this._modalActive = false;
+    this.physics.world.resume();
+    this._checkLevelUp();
+  }
+
+  _drawXPBar() {
+    const g = this.xpBarGfx;
+    g.clear();
+    const W = this.scale.width;
+    const ratio = state.xpToLevel > 0 ? state.xp / state.xpToLevel : 0;
+    g.fillStyle(0x111111, 0.8);
+    g.fillRect(0, 0, W, 6);
+    g.fillStyle(0x00ff88, 1);
+    g.fillRect(0, 0, W * ratio, 6);
+    this.levelText.setText(`LVL ${state.level}`);
   }
 
   _drawAmmoBlocks() {

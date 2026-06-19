@@ -4,6 +4,17 @@ import { state } from '../state.js';
 const ATTRACT_RADIUS = 240;
 const BALL_R = 16;
 
+// Common entries appear twice (higher weight), rare once
+export const UPGRADE_TYPES = [
+  'firerate',  'firerate',
+  'reload',    'reload',
+  'ammo',      'ammo',
+  'accuracy',  'accuracy',
+  'multishot',
+  'ricochet',
+  'ammoeff',
+];
+
 export const UPGRADE_DEFS = {
   multishot:          { rgb: [180, 60,  255], letter: 'M' },
   ammoeff:            { rgb: [255, 180,  60], letter: 'E' },
