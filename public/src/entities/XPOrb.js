@@ -34,6 +34,7 @@ export class XPOrb extends Phaser.Physics.Arcade.Sprite {
     this.lifespan = 0;
     this.hue = Math.random();
     this.speed = 0;
+    this.linkedEnemy = null;
   }
 
   setActive(value) {
@@ -42,10 +43,11 @@ export class XPOrb extends Phaser.Physics.Arcade.Sprite {
     return this;
   }
 
-  spawn(x, y) {
+  spawn(x, y, linkedEnemy = null) {
     this.lifespan = 12000;
     this.hue = Math.random();
     this.speed = 0;
+    this.linkedEnemy = linkedEnemy;
     this.setPosition(x, y);
     this.setActive(true);
     this.gfx.setVisible(true);
@@ -67,11 +69,15 @@ export class XPOrb extends Phaser.Physics.Arcade.Sprite {
 
     const { player } = state;
     const angle = Phaser.Math.Angle.Between(this.x, this.y, player.x, player.y);
+    const dist = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
 
-    // Exact weapon feel: speed accelerates linearly, moves directly toward player
-    this.speed += 0.1;
-    this.x += Math.cos(angle) * this.speed;
-    this.y += Math.sin(angle) * this.speed;
+    const restricted = this.linkedEnemy && !this.linkedEnemy.death;
+    if (!restricted || dist < 80 || this.speed > 0) {
+      this.linkedEnemy = null;
+      this.speed += 0.1;
+      this.x += Math.cos(angle) * this.speed;
+      this.y += Math.sin(angle) * this.speed;
+    }
 
     // Cycle through custom palette
     this.hue = (this.hue + delta / 1800) % 1;

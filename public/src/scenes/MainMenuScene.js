@@ -19,6 +19,9 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.audio('pistol_sfx', '/src/assets/pistol_sfx.mp3');
     this.load.audio('rifle_sfx', '/src/assets/rifle_sfx.mp3');
     this.load.audio('sword_sfx', '/src/assets/sword_sfx.mp3');
+    this.load.audio('single_reload_sfx', '/src/assets/single_reload_sfx.mp3');
+    this.load.audio('reload_mag_sfx', '/src/assets/reload_mag_sfx.mp3');
+    this.load.audio('empty_mag_sfx', '/src/assets/empty_mag_sfx.mp3');
     this.load.audio('banishing', '/src/assets/Filmmaker - Great Tribulations - 01 Banishing.mp3');
     this.load.image('background', '/src/assets/tiled-bg.png');
     this.load.image('wall', '/src/assets/wall.png');
@@ -42,6 +45,9 @@ export class MainMenuScene extends Phaser.Scene {
     state.shotgun_sfx = this.sound.add('shotgun_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.rifle_sfx = this.sound.add('rifle_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.sword_sfx = this.sound.add('sword_sfx', { loop: false, volume: 0.5, allowMultiple: true });
+    state.single_reload_sfx = this.sound.add('single_reload_sfx', { loop: false, volume: 0.4, allowMultiple: true });
+    state.reload_mag_sfx = this.sound.add('reload_mag_sfx', { loop: false, volume: 0.5, allowMultiple: false });
+    state.empty_mag_sfx = this.sound.add('empty_mag_sfx', { loop: false, volume: 0, allowMultiple: false });
 
     this.anims.create({ key: 'walk', frames: this.anims.generateFrameNumbers('legs', { frames: [0,1,2,3,4,5,6,7,8,9,10,11] }), frameRate: 12, repeat: -1 });
     this.anims.create({ key: 'left-punch', frames: this.anims.generateFrameNumbers('player', { frames: [2,2,1,1,1,1,1,1,0] }), frameRate: 32, repeat: 0 });

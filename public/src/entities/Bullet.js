@@ -32,6 +32,7 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
 
     this.reflect = false;
     this.bounces = enemyBullet ? 0 : state.upgrade.ricochet;
+    this.pierceLeft = enemyBullet ? 0 : state.upgrade.pierce;
     this.bounceCooldown = 0;
     this.body.setCircle(2);
     this.enemyBullet = enemyBullet;

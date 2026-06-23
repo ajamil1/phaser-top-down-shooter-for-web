@@ -12,7 +12,7 @@ import { Corpse } from '../entities/Corpse.js';
 import { Spark } from '../entities/Spark.js';
 import { EnemySight } from '../entities/EnemySight.js';
 import { EnemyPathScan } from '../entities/EnemyPathScan.js';
-import { shootBullet, setWeapon, getFacingPosition } from '../utils/combat.js';
+import { shootBullet, shootChargeShotgun, setWeapon, getFacingPosition } from '../utils/combat.js';
 import { spawnDashLine, spawnWall, getEnemy, spawnSpark } from '../utils/spawners.js';
 import { MAX_VELOCITY, MAX_RADIUS, SPAWN_RATE } from '../config.js';
 
@@ -45,6 +45,10 @@ export class MainGameScene extends Phaser.Scene {
     this._spinning = false;
     this._modalActive = false;
     this._modalObjects = [];
+    this._pendingUpgrades = 0;
+    this._upgradeBtnObjs = null;
+    this._arWindup = 0;
+    this._shotgunCharge = 0;
     this.reload = {
       active: false,
       ejecting: false,
@@ -169,6 +173,11 @@ export class MainGameScene extends Phaser.Scene {
       fontSize: '14px', fontFamily: 'monospace', fill: '#00ff88',
     }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
 
+    this.upgradeListText = this.add.text(this.scale.width - 12, 30, '', {
+      fontSize: '11px', fontFamily: 'monospace', fill: '#888888', align: 'right',
+      lineSpacing: 3,
+    }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
+
   }
 
   _setupCollisions() {
@@ -185,12 +194,13 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(delay, () => {
       const weaponDefs = {
-        0: { type: 'pistol',  ammo: 9,  firemode: 'semi', frame: 5 },
-        1: { type: 'shotgun', ammo: 7, firemode: 'semi', frame: 7 },
-        2: { type: 'ar',      ammo: 25, firemode: 'auto', firerate: 80,  frame: 6 },
-        3: { type: 'sword',   ammo: 25, firemode: 'auto', firerate: 150, frame: 15 },
+        0: { type: 'pistol',     ammo: 9,  firemode: 'semi', frame: 5 },
+        1: { type: 'shotgun',    ammo: 7,  firemode: 'semi', frame: 7 },
+        2: { type: 'ar',         ammo: 25, firemode: 'auto', firerate: 80,  frame: 6 },
+        3: { type: 'sword',      ammo: 25, firemode: 'auto', firerate: 150, frame: 15 },
+        4: { type: 'dualPistol', ammo: 18, firemode: 'semi', frame: 8 },
       };
-      const PRIORITY = { none: -1, sword: 0, pistol: 1, ar: 2, shotgun: 3 };
+      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, ar: 2, shotgun: 3 };
 
       let lastPickupTime = 0;
 
@@ -207,8 +217,19 @@ export class MainGameScene extends Phaser.Scene {
         const incoming = PRIORITY[def.type] ?? -1;
         const current  = PRIORITY[state.weapon.type] ?? -1;
 
-        if (!inSuccession || incoming >= current) {
+        if (def.type === 'pistol' && (state.weapon.type === 'pistol' || state.weapon.type === 'dualPistol')) {
+          // Pistol + pistol = dual wield; extra pickups top up ammo
+          if (state.weapon.type === 'dualPistol') {
+            state.weapon.ammo = Math.min(state.weapon.ammo + 9, 18);
+          } else {
+            Object.assign(state.weapon, { type: 'dualPistol', ammo: Math.min(state.weapon.ammo + 9, 18), firemode: 'semi' });
+            state.dualPistolFrame = 8;
+            player.setFrame(8);
+          }
+          lastPickupTime = now;
+        } else if (!inSuccession || incoming >= current) {
           Object.assign(state.weapon, def);
+          if (def.type === 'dualPistol') state.dualPistolFrame = 8;
           player.setFrame(def.frame);
           lastPickupTime = now;
         }
@@ -351,6 +372,12 @@ export class MainGameScene extends Phaser.Scene {
         }
       }
     });
+    this.input.keyboard.on('keydown-ESC', () => {
+      if (this._modalActive || this._pendingUpgrades <= 0) return;
+      this._pendingUpgrades--;
+      this._hideUpgradeButton();
+      this._showLevelUpModal(this._pickUpgradeChoices());
+    });
 
     this.input.on('pointerdown', (pointer) => {
       if (this._modalActive) return;
@@ -363,9 +390,32 @@ export class MainGameScene extends Phaser.Scene {
       if (state.weapon.firemode === 'semi') {
         if (state.weapon.ammo <= 0 && state.weapon.type !== 'none' && state.weapon.type !== 'sword') {
           this._dryFire();
+        } else if (state.weapon.type === 'shotgun' && state.upgrade.chargeShot > 0) {
+          if (this.reload.active && state.weapon.ammo > 0) this._cancelReload();
+          // charge accumulates in update(); fire happens on pointerup
         } else {
           if (this.reload.active && state.weapon.ammo > 0) this._cancelReload();
-          shootBullet(state.player.rotation);
+          if (state.weapon.type === 'dualPistol') {
+            const burstFrame = state.dualPistolFrame;
+            state.player.setFrame(burstFrame);
+            const fireOne = (count) => {
+              if (state.weapon.type !== 'dualPistol' || state.weapon.ammo <= 0) return;
+              shootBullet(state.player.rotation);
+              this._updateLowAmmoSound();
+              if (count > 1) {
+                setTimeout(() => fireOne(count - 1), 70);
+              } else {
+                const nextFrame = burstFrame === 8 ? 9 : 8;
+                state.dualPistolFrame = nextFrame;
+                state.player.setFrame(25);
+                setTimeout(() => state.player.setFrame(nextFrame), 80);
+              }
+            };
+            fireOne(3);
+          } else {
+            shootBullet(state.player.rotation);
+            this._updateLowAmmoSound();
+          }
         }
       }
       if (state.weapon.type === 'none') this._doMeleePunch();
@@ -401,7 +451,18 @@ export class MainGameScene extends Phaser.Scene {
     });
 
     this.input.on('pointerup', (pointer) => {
-      if (!pointer.leftButtonDown()) this.shooting = false;
+      if (!pointer.leftButtonDown()) {
+        this.shooting = false;
+        if (state.weapon.type === 'pistol' && state.upgrade.binaryTrigger > 0 && !this._modalActive && state.weapon.ammo > 0) {
+          shootBullet(state.player.rotation);
+          this._updateLowAmmoSound();
+        }
+        if (state.weapon.type === 'shotgun' && state.upgrade.chargeShot > 0 && this._shotgunCharge > 0 && !this._modalActive) {
+          shootChargeShotgun(state.player.rotation, this._shotgunCharge);
+          this._shotgunCharge = 0;
+          this._updateLowAmmoSound();
+        }
+      }
       if (state.weapon.type !== 'none' && state.weapon.type !== 'sword') {
         setWeapon(state.weapon.type);
       }
@@ -427,7 +488,7 @@ export class MainGameScene extends Phaser.Scene {
     this.meleeHitbox.body.setCircle(70);
     this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 70, this.meleeHitbox.height / 2 - 70);
     const nextAnim = this.meleeFrame === 0 ? 'left-slash' : 'right-slash';
-    const startFrame = this.meleeFrame === 0 ? 19 : 20;
+    const startFrame = this.meleeFrame === 0 ? 23 : 16;
     if (player.anims.currentAnim?.key !== nextAnim) {
       this.meleeHitbox.body.checkCollision.none = false;
       player.setFrame(startFrame);
@@ -627,12 +688,35 @@ export class MainGameScene extends Phaser.Scene {
     if (state.frames % 3 === 0) spawnWall();
     if (state.frames % SPAWN_RATE === 0 && state.frames >= 500) getEnemy();
 
+    state.windupAmmoBonus = 0;
     if (state.weapon.firemode === 'auto' && this.shooting) {
-      const rate = Math.max(50, (state.weapon.firerate ?? 150) - state.upgrade.firerateBonus * 15);
+      let rate = Math.max(50, (state.weapon.firerate ?? 150) - state.upgrade.firerateBonus * 15);
+      if (state.weapon.type === 'ar' && state.upgrade.windUp > 0) {
+        if (state.weapon.ammo > 0) {
+          this._arWindup = Math.min(1, this._arWindup + delta / 3000);
+        } else {
+          this._arWindup = Math.max(0, this._arWindup - delta / 2000);
+        }
+        const slowRate = rate * 3;
+        rate = Math.max(rate, slowRate * Math.pow(1 / 3, this._arWindup));
+        state.windupAmmoBonus = Math.pow(this._arWindup, 2) * 0.65;
+      }
       if (time - this._lastAutoShot >= rate) {
         if (state.weapon.ammo <= 0) this._dryFire();
-        else { shootBullet(player.rotation); this._lastAutoShot = time; }
+        else { shootBullet(player.rotation); this._lastAutoShot = time; this._updateLowAmmoSound(); }
       }
+    } else if (state.weapon.type === 'ar' && state.upgrade.windUp > 0) {
+      this._arWindup = Math.max(0, this._arWindup - delta / 800);
+      state.windupAmmoBonus = Math.pow(this._arWindup, 2) * 0.65;
+    }
+
+    if (state.weapon.type === 'shotgun' && state.upgrade.chargeShot > 0) {
+      if (this.shooting && state.weapon.ammo > 0 && !this.reload.active) {
+        const chargeTime = Math.max(400, 2500 - state.upgrade.firerateBonus * 150);
+        this._shotgunCharge = Math.min(1, this._shotgunCharge + delta / chargeTime);
+      }
+    } else {
+      this._shotgunCharge = 0;
     }
 
     this._updateReload(delta);
@@ -640,6 +724,7 @@ export class MainGameScene extends Phaser.Scene {
     this._drawAmmoBlocks();
     this._updateHUD();
     this._drawXPBar();
+    this._drawUpgradeList();
   }
 
   // ── XP / Level-up ─────────────────────────────────────────────────────────────
@@ -650,16 +735,58 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   _checkLevelUp() {
-    if (state.xp >= state.xpToLevel) {
+    while (state.xp >= state.xpToLevel) {
       state.xp -= state.xpToLevel;
       state.level++;
       state.xpToLevel = 100 + state.level * 30;
-      this._showLevelUpModal(this._pickUpgradeChoices());
+      this._pendingUpgrades++;
     }
+    if (this._pendingUpgrades > 0 && !this._upgradeBtnObjs) this._showUpgradeButton();
+  }
+
+  _showUpgradeButton() {
+    this._upgradeBtnObjs = [];
+    const push = obj => { this._upgradeBtnObjs.push(obj); return obj; };
+    const W = this.scale.width, H = this.scale.height;
+    const bx = W / 2, by = H - 38;
+
+    const countStr = this._pendingUpgrades > 1 ? `  [${this._pendingUpgrades}]` : '';
+    const bg = push(this.add.rectangle(bx, by, 250, 30, 0x110022, 0.92)
+      .setScrollFactor(0).setDepth(15).setStrokeStyle(1.5, 0xaa44ff, 0.9));
+    push(this.add.text(bx, by, `▲  LEVEL UP${countStr}`, {
+      fontSize: '13px', fontFamily: 'monospace', fill: '#cc88ff',
+    }).setScrollFactor(0).setDepth(16).setOrigin(0.5));
+
+    this.tweens.add({
+      targets: this._upgradeBtnObjs,
+      alpha: 0.45,
+      duration: 520,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
+
+    const zone = push(this.add.zone(bx, by, 250, 30)
+      .setScrollFactor(0).setDepth(17).setInteractive());
+    zone.on('pointerover', () => bg.setFillStyle(0x220044, 0.95));
+    zone.on('pointerout',  () => bg.setFillStyle(0x110022, 0.92));
+    zone.on('pointerdown', () => {
+      this._pendingUpgrades--;
+      this._hideUpgradeButton();
+      this._showLevelUpModal(this._pickUpgradeChoices());
+    });
+  }
+
+  _hideUpgradeButton() {
+    if (!this._upgradeBtnObjs) return;
+    this.tweens.killTweensOf(this._upgradeBtnObjs);
+    for (const obj of this._upgradeBtnObjs) { try { obj.destroy(); } catch (_) {} }
+    this._upgradeBtnObjs = null;
   }
 
   _pickUpgradeChoices() {
-    const pool = [...UPGRADE_TYPES];
+    const NON_STACKABLE = ['binaryTrigger', 'chargeShot', 'windUp'];
+    const pool = [...UPGRADE_TYPES].filter(t => !NON_STACKABLE.includes(t) || state.upgrade[t] === 0);
     const choices = [];
     while (choices.length < 3 && pool.length > 0) {
       const idx = Phaser.Math.Between(0, pool.length - 1);
@@ -691,21 +818,49 @@ export class MainGameScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
 
     const NAMES = {
-      firerate:  'FIRE RATE',  reload:    'RELOAD',
-      ammo:      'AMMO',       accuracy:  'ACCURACY',
-      multishot: 'MULTISHOT',  ricochet:  'RICOCHET',
-      ammoeff:   'AMMO EFF.',
+      firerate:      'FIRE RATE',   reload:        'RELOAD',
+      ammo:          'AMMO',        accuracy:      'ACCURACY',
+      multishot:     'MULTISHOT',   ricochet:      'RICOCHET',
+      ammoeff:       'AMMO EFF.',   bulletspeed:   'BULLET SPD',
+      damage:        'DAMAGE',      pierce:        'PIERCE',
+      binaryTrigger: 'BIN. TRIG.',  chargeShot:    'CHARGE SHOT',
+      windUp:        'WIND UP',
     };
     const DESCS = {
-      firerate:  '+fire speed',   reload:    '+reload zone',
-      ammo:      '+3 max ammo',   accuracy:  '+accuracy',
-      multishot: '+1 bullet',     ricochet:  '+1 bounce',
-      ammoeff:   '+ammo eff.',
+      firerate:      '+fire speed',    reload:        '+reload zone',
+      ammo:          '+3 max ammo',    accuracy:      '+accuracy',
+      multishot:     '+1 bullet',      ricochet:      '+1 bounce',
+      ammoeff:       '+ammo eff.',     bulletspeed:   '+bullet spd',
+      damage:        '+1 damage',      pierce:        '+1 pierce',
+      binaryTrigger: 'fire on release',chargeShot:    'hold to charge',
+      windUp:        'AR spins up',
     };
 
-    const cardW = 180, cardH = 230, gap = 28;
+    const upgradeLevel = type => {
+      const u = state.upgrade;
+      switch (type) {
+        case 'firerate':      return u.firerateBonus;
+        case 'reload':        return u.reloadZone;
+        case 'ammo':          return Math.floor(u.ammoBonus / 3);
+        case 'accuracy':      return u.accuracy;
+        case 'multishot':     return u.multishot;
+        case 'ricochet':      return u.ricochet;
+        case 'ammoeff':       return u.ammoEfficiency;
+        case 'bulletspeed':   return u.bulletspeed;
+        case 'damage':        return u.damage - 1;
+        case 'pierce':        return u.pierce;
+        case 'binaryTrigger': return u.binaryTrigger;
+        case 'chargeShot':     return u.chargeShot;
+        case 'windUp':        return u.windUp;
+        default: return 0;
+      }
+    };
+
+    const cardW = 180, cardH = 240, gap = 28;
     const totalW = choices.length * cardW + (choices.length - 1) * gap;
     const startX = (W - totalW) / 2;
+
+    const PIP_W = 11, PIP_H = 4, PIP_GAP = 3, MAX_PIPS = 10;
 
     choices.forEach((type, i) => {
       const def = UPGRADE_DEFS[type];
@@ -725,14 +880,29 @@ export class MainGameScene extends Phaser.Scene {
         fontSize: '22px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ffffff',
       }).setScrollFactor(0).setDepth(23).setOrigin(0.5));
 
-      push(this.add.text(cx, cy + 10, NAMES[type] ?? type.toUpperCase(), {
+      push(this.add.text(cx, cy + 6, NAMES[type] ?? type.toUpperCase(), {
         fontSize: '15px', fontFamily: 'monospace', fill: colorHex, align: 'center',
         wordWrap: { width: cardW - 20 },
       }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
 
-      push(this.add.text(cx, cy + 46, DESCS[type] ?? '', {
+      push(this.add.text(cx, cy + 38, DESCS[type] ?? '', {
         fontSize: '12px', fontFamily: 'monospace', fill: '#777777', align: 'center',
       }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
+
+      // Upgrade level bar
+      const level = upgradeLevel(type);
+      const pipsW = MAX_PIPS * (PIP_W + PIP_GAP) - PIP_GAP;
+      const pipsX = cx - pipsW / 2;
+      const pipsY = cy + 68;
+      for (let p = 0; p < MAX_PIPS; p++) {
+        const filled = p < level;
+        push(this.add.rectangle(
+          pipsX + p * (PIP_W + PIP_GAP) + PIP_W / 2, pipsY,
+          PIP_W, PIP_H,
+          filled ? color : 0x2a2a2a,
+          filled ? 0.9 : 0.5,
+        ).setScrollFactor(0).setDepth(22));
+      }
 
       const zone = push(this.add.zone(cx, cy, cardW, cardH)
         .setScrollFactor(0).setDepth(24).setInteractive());
@@ -744,19 +914,59 @@ export class MainGameScene extends Phaser.Scene {
 
   _applyLevelUpChoice(type) {
     switch (type) {
-      case 'multishot': state.upgrade.multishot++; break;
-      case 'firerate':  state.upgrade.firerateBonus++; break;
-      case 'reload':    state.upgrade.reloadZone++; break;
-      case 'ammo':      state.upgrade.ammoBonus += 3; break;
-      case 'accuracy':  state.upgrade.accuracy++; break;
-      case 'ricochet':  state.upgrade.ricochet++; break;
-      case 'ammoeff':   state.upgrade.ammoEfficiency++; break;
+      case 'multishot':   state.upgrade.multishot++; break;
+      case 'firerate':    state.upgrade.firerateBonus++; break;
+      case 'reload':      state.upgrade.reloadZone++; break;
+      case 'ammo':        state.upgrade.ammoBonus += 3; break;
+      case 'accuracy':    state.upgrade.accuracy++; break;
+      case 'ricochet':    state.upgrade.ricochet++; break;
+      case 'ammoeff':       state.upgrade.ammoEfficiency++; break;
+      case 'bulletspeed':   state.upgrade.bulletspeed++; break;
+      case 'damage':        state.upgrade.damage++; break;
+      case 'pierce':        state.upgrade.pierce++; break;
+      case 'binaryTrigger': state.upgrade.binaryTrigger = 1; break;
+      case 'chargeShot':     state.upgrade.chargeShot = 1; break;
+      case 'windUp':        state.upgrade.windUp = 1; break;
     }
     for (const obj of this._modalObjects) obj.destroy();
     this._modalObjects = [];
     this._modalActive = false;
     this.physics.world.resume();
-    this._checkLevelUp();
+
+    // Drain any XP accumulated while modal was open
+    while (state.xp >= state.xpToLevel) {
+      state.xp -= state.xpToLevel;
+      state.level++;
+      state.xpToLevel = 100 + state.level * 30;
+      this._pendingUpgrades++;
+    }
+
+    // Chain directly to next screen if more are pending
+    if (this._pendingUpgrades > 0) {
+      this._pendingUpgrades--;
+      this._showLevelUpModal(this._pickUpgradeChoices());
+    } else {
+      this._hideUpgradeButton();
+    }
+  }
+
+  _drawUpgradeList() {
+    const u = state.upgrade;
+    const lines = [];
+    if (u.firerateBonus > 0)            lines.push(`FIRE RATE   ×${u.firerateBonus}`);
+    if (u.reloadZone > 0)               lines.push(`RELOAD      ×${u.reloadZone}`);
+    if (Math.floor(u.ammoBonus / 3) > 0) lines.push(`AMMO        ×${Math.floor(u.ammoBonus / 3)}`);
+    if (u.accuracy > 0)                 lines.push(`ACCURACY    ×${u.accuracy}`);
+    if (u.bulletspeed > 0)              lines.push(`BULLET SPD  ×${u.bulletspeed}`);
+    if (u.multishot > 0)                lines.push(`MULTISHOT   ×${u.multishot}`);
+    if (u.ricochet > 0)                 lines.push(`RICOCHET    ×${u.ricochet}`);
+    if (u.ammoEfficiency > 0)           lines.push(`AMMO EFF.   ×${u.ammoEfficiency}`);
+    if (u.damage > 1)                   lines.push(`DAMAGE      ×${u.damage - 1}`);
+    if (u.pierce > 0)                   lines.push(`PIERCE      ×${u.pierce}`);
+    if (u.binaryTrigger > 0)            lines.push(`BIN. TRIG.`);
+    if (u.chargeShot > 0)                lines.push(`CHARGE SHOT`);
+    if (u.windUp > 0)                   lines.push(`WIND UP`);
+    this.upgradeListText.setText(lines.join('\n'));
   }
 
   _drawXPBar() {
@@ -783,8 +993,9 @@ export class MainGameScene extends Phaser.Scene {
     const BH = 5;
     const GAP = 2;
     const ROW_GAP = 3;
-    const COLS = weapon.type === 'pistol' ? max
-               : weapon.type === 'ar'     ? Math.ceil(max / 2)
+    const COLS = weapon.type === 'pistol'     ? max
+               : weapon.type === 'dualPistol' ? 9
+               : weapon.type === 'ar'         ? Math.ceil(max / 2)
                : max;
     const rows = Math.ceil(max / COLS);
     const gridW = COLS * (BW + GAP) - GAP;
@@ -809,10 +1020,31 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  _playEmptyMagSfx(volume) {
+    const sfx = state.empty_mag_sfx;
+    if (!sfx) return;
+    if (sfx.isPlaying) sfx.stop();
+    sfx.setVolume(volume);
+    sfx.play();
+  }
+
+  // Called after each shot — ramps volume and pitch from 50% ammo down to 0%
+  _updateLowAmmoSound() {
+    const { weapon } = state;
+    const max = this._maxAmmo(weapon.type);
+    if (max === 0) return;
+    const ratio = weapon.ammo / max;
+    if (ratio > 0.5) return;
+    const t = 1 - ratio / 0.5; // 0 at 50% ammo → 1 at 0% ammo
+    state.empty_mag_sfx.setDetune(-500 + t * 400); // -500 cents (low) → -100 cents (slightly below base)
+    this._playEmptyMagSfx(t * 0.3);
+  }
+
   _dryFire() {
     const now = this.time.now;
     if (now - this._dryFireCooldown < 300) return;
     this._dryFireCooldown = now;
+    this._playEmptyMagSfx(0.65);
     const { player } = state;
     this.clickText.setPosition(player.x, player.y - 30);
     this.clickText.setRotation(Phaser.Math.FloatBetween(-0.3, 0.3));
@@ -844,7 +1076,7 @@ export class MainGameScene extends Phaser.Scene {
   // ── Reload ─────────────────────────────────────────────────────────────────
 
   _maxAmmo(type) {
-    const base = { pistol: 9, shotgun: 7, ar: 25 }[type] ?? 0;
+    const base = { pistol: 9, dualPistol: 18, shotgun: 7, ar: 25 }[type] ?? 0;
     return base + state.upgrade.ammoBonus;
   }
 
@@ -878,16 +1110,22 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.qteActive = weapon.type === 'shotgun';
     this.reload.delay = 0;
     this.reload.shellsLeft = weapon.type === 'shotgun' ? max - weapon.ammo : 0;
+    this.reload.magsLeft = weapon.type === 'dualPistol' ? 2 : 0;
     this.reload.ejectElapsed = 0;
     this.reload.windowMs = weapon.type === 'shotgun'
-      ? Math.max(240, 630 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 60)
-      : Math.max(250, 700 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 60);
+      ? Math.max(200, 630 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 80)
+      : Math.max(200, 700 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 80);
   }
 
   _onEjectKey() {
     if (!this.reload.ejecting) return;
     this.reload.ejecting = false;
     this.reload.qteActive = true;
+    const wt = state.weapon.type;
+    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'ar') {
+      state.empty_mag_sfx.setDetune(wt === 'ar' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
+      this._playEmptyMagSfx(0.55);
+    }
   }
 
   _resolveQTE(expired = false) {
@@ -898,6 +1136,20 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.result = hit ? 'hit' : 'miss';
     this.reload.qteActive = false;
     this.reload.delay = hit ? 120 : 300;
+    if (hit) {
+      const wt = state.weapon.type;
+      if (wt === 'shotgun') {
+        state.empty_mag_sfx.setVolume(0.5);
+        state.empty_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
+        state.empty_mag_sfx.play();
+      } else if (wt === 'pistol' || wt === 'dualPistol') {
+        state.reload_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
+        state.reload_mag_sfx.play();
+      } else if (wt === 'ar') {
+        state.reload_mag_sfx.setDetune(Phaser.Math.Between(-600, -200));
+        state.reload_mag_sfx.play();
+      }
+    }
   }
 
   _loadAmmo() {
@@ -914,6 +1166,22 @@ export class MainGameScene extends Phaser.Scene {
         // Next shell — new QTE
         this.reload.indicator = 0;
         this.reload.sweetMin = 0.39 + Phaser.Math.FloatBetween(-0.03, 0.03);
+        this.reload.sweetMax = Math.min(0.95, this.reload.sweetMin + 0.22 + state.upgrade.reloadZone * 0.08);
+        this.reload.result = null;
+        this.reload.qteActive = true;
+        this.reload.delay = 0;
+      } else {
+        this.reload.active = false;
+      }
+    } else if (weapon.type === 'dualPistol') {
+      weapon.ammo = Math.min(weapon.ammo + Math.floor(max / 2), max);
+      this.reload.magsLeft--;
+      state.dualPistolFrame = state.dualPistolFrame === 8 ? 9 : 8;
+      state.player.setFrame(25);
+      setTimeout(() => state.player.setFrame(state.dualPistolFrame), 80);
+      if (this.reload.magsLeft > 0) {
+        this.reload.indicator = 0;
+        this.reload.sweetMin = 0.39 + Phaser.Math.FloatBetween(-0.08, 0.08);
         this.reload.sweetMax = Math.min(0.95, this.reload.sweetMin + 0.22 + state.upgrade.reloadZone * 0.08);
         this.reload.result = null;
         this.reload.qteActive = true;
@@ -972,6 +1240,43 @@ export class MainGameScene extends Phaser.Scene {
   _drawReloadBar() {
     const g = this.reloadGfx;
     g.clear();
+
+    // Charge shot meter — replaces reload bar while building charge
+    if (state.weapon.type === 'shotgun' && state.upgrade.chargeShot > 0 && this._shotgunCharge > 0) {
+      const { player } = state;
+      const W = 120, H = 10;
+      const bx = player.x - W / 2;
+      const by = player.y + 85;
+      const ratio = this._shotgunCharge;
+
+      g.fillStyle(0x111111, 0.92);
+      g.fillRect(bx - 2, by - 2, W + 4, H + 4);
+
+      // Fill shifts yellow → orange → red with charge
+      const rv = Math.min(255, Math.round(180 + 75 * ratio));
+      const gv = Math.max(0, Math.round(180 - 180 * ratio));
+      const chargeColor = (rv << 16) | (gv << 8);
+      g.fillStyle(chargeColor, 0.9);
+      g.fillRect(bx, by, W * ratio, H);
+
+      // 50% threshold marker
+      g.fillStyle(0xffffff, 0.35);
+      g.fillRect(bx + W / 2 - 1, by - 2, 2, H + 4);
+
+      // Shell pips indicating how many will fire
+      const max = this._maxAmmo('shotgun');
+      const shells = Math.max(1, Math.round(ratio * max));
+      const pw = (W - (max - 1)) / max;
+      const py = by + H + 5;
+      for (let i = 0; i < max; i++) {
+        g.fillStyle(i < shells ? chargeColor : 0x444444, 1);
+        g.fillRect(bx + i * (pw + 1), py, pw, 5);
+      }
+
+      this.reloadLabel.setPosition(player.x, player.y + 82)
+        .setText(`CHARGE  ${shells}/${max}`).setColor('#ffaa44');
+      return;
+    }
 
     if (!this.reload.active) {
       if (state.weapon.type === 'shotgun' && state.weapon.ammo <= 0) {

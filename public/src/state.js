@@ -35,7 +35,14 @@ export const state = {
     accuracy: 0,
     ricochet: 0,
     ammoEfficiency: 0,
+    pierce: 0,
+    binaryTrigger: 0,
+    chargeShot: 0,
+    windUp: 0,
   },
+
+  windupAmmoBonus: 0,
+  dualPistolFrame: 8,
 
   // physics groups
   bullets: null,
@@ -55,6 +62,9 @@ export const state = {
   shotgun_sfx: null,
   rifle_sfx: null,
   sword_sfx: null,
+  single_reload_sfx: null,
+  reload_mag_sfx: null,
+  empty_mag_sfx: null,
   banishing: null,
 
   // collision/overlap handles

@@ -6,23 +6,36 @@ const BALL_R = 16;
 
 // Common entries appear twice (higher weight), rare once
 export const UPGRADE_TYPES = [
-  'firerate',  'firerate',
-  'reload',    'reload',
-  'ammo',      'ammo',
-  'accuracy',  'accuracy',
+  'firerate',   'firerate',
+  'reload',     'reload',
+  'ammo',       'ammo',
+  'accuracy',   'accuracy',
+  'bulletspeed','bulletspeed',
+  'damage',     'damage',
   'multishot',
   'ricochet',
   'ammoeff',
+  // Ultimates — appear once (rare)
+  'pierce',
+  'binaryTrigger',
+  'chargeShot',
+  'windUp',
 ];
 
 export const UPGRADE_DEFS = {
-  multishot:          { rgb: [180, 60,  255], letter: 'M' },
-  ammoeff:            { rgb: [255, 180,  60], letter: 'E' },
-  firerate:           { rgb: [60,  220, 255], letter: 'F' },
-  reload:             { rgb: [60,  255, 130], letter: 'R' },
-  ammo:               { rgb: [255, 210, 50],  letter: 'A' },
-  accuracy:           { rgb: [255, 110, 40],  letter: 'A' },
-  ricochet:           { rgb: [140, 220, 255], letter: 'R' },
+  multishot:   { rgb: [180, 60,  255], letter: 'M' },
+  ammoeff:     { rgb: [255, 180,  60], letter: 'E' },
+  firerate:    { rgb: [60,  220, 255], letter: 'F' },
+  reload:      { rgb: [60,  255, 130], letter: 'R' },
+  ammo:        { rgb: [255, 210, 50],  letter: 'A' },
+  accuracy:    { rgb: [255, 110, 40],  letter: 'A' },
+  ricochet:    { rgb: [140, 220, 255], letter: 'R' },
+  bulletspeed: { rgb: [255, 80,  160], letter: 'S' },
+  damage:        { rgb: [255, 50,  50],  letter: 'D' },
+  pierce:        { rgb: [100, 255, 200], letter: 'P' },
+  binaryTrigger: { rgb: [255, 215, 0],  letter: 'T' },
+  chargeShot:     { rgb: [255, 120, 0],  letter: 'C' },
+  windUp:        { rgb: [180, 80,  255], letter: 'W' },
 };
 
 export function buildUpgradeTextures() {}

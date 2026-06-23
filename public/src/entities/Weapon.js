@@ -14,14 +14,26 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     this.lifespan = 0;
     this.id = Phaser.Math.Between(0, 3);
     this.body.setCircle(this.body.width / 2);
+    this.overlay = scene.add.image(x, y, 'weapon').setScale(2).setVisible(false).setDepth(3);
+  }
+
+  setActive(value) {
+    super.setActive(value);
+    if (!value && this.overlay) this.overlay.setVisible(false);
+    return this;
   }
 
   sprite() {
     const frames = [0, 1, 2, 3];
-    if (this.id >= 0 && this.id <= 3) {
+    if (this.id === 4) {
+      this.setFrame(0);
+      this.overlay.setFrame(0).setVisible(true);
+    } else if (this.id >= 0 && this.id <= 3) {
       this.setFrame(frames[this.id]);
+      this.overlay.setVisible(false);
     } else {
       this.setTint(0xed00ff);
+      this.overlay.setVisible(false);
     }
   }
 
@@ -55,14 +67,22 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
 
     if (distanceToCursor <= 200 && distance <= 3000) {
       this.setTint(0xff0051);
+      if (this.id === 4) this.overlay.setTint(0xff0051);
       if (spaceDown) this.selected = true;
     } else {
       this.clearTint();
+      if (this.id === 4) this.overlay.clearTint();
     }
 
     this.rotation += this.speed / 100;
     this.x += Math.cos(angle) * this.speed;
     this.y += Math.sin(angle) * this.speed;
+
+    if (this.id === 4) {
+      this.overlay.setPosition(this.x + 5, this.y + 5);
+      this.overlay.setRotation(this.rotation);
+      this.overlay.setAlpha(this.alpha);
+    }
 
     if (!this.selected) {
       this.speed = 0;
