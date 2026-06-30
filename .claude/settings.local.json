@@ -17,7 +17,11 @@
       "mcp__nubo__list_spaces",
       "mcp__nubo__list_frames",
       "mcp__nubo__get_runtime_logs",
-      "mcp__nubo__whoami"
+      "mcp__nubo__whoami",
+      "mcp__nubo__deploy_frame",
+      "mcp__nubo__list_deployments",
+      "mcp__nubo__get_build_logs",
+      "PowerShell(Start-Process \"https://phaser-top-down-shooter-for-web-es8c.nubo.onl\")"
     ],
     "additionalDirectories": [
       "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src"

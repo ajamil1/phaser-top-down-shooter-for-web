@@ -41,7 +41,9 @@ export function shootBullet(rotation) {
         const shots = Math.min(1 + extraShots, weapon.ammo);
         pistol_sfx.play();
         pistol_sfx.setDetune(detune);
-        const spread = Math.max(0.10, 0.28 + spreadMod);
+        const spread = state.shieldUp
+          ? Math.max(0.10, 0.28 + spreadMod)
+          : Math.max(0.005, 0.02 + spreadMod);
         for (let s = 0; s < shots; s++) {
           const bullet = bullets.get(player.x, player.y);
           if (!bullet) break;

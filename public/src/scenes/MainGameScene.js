@@ -242,9 +242,11 @@ export class MainGameScene extends Phaser.Scene {
           }
           lastPickupTime = now;
         } else if (!inSuccession || incoming >= current) {
+          state.shieldUp = def.type === 'shieldPistol';
           Object.assign(state.weapon, def);
           if (def.type === 'dualPistol') state.dualPistolFrame = 8;
           player.setFrame(def.frame);
+          player.body.setMaxVelocity(MAX_VELOCITY);
           lastPickupTime = now;
         }
 
@@ -417,15 +419,7 @@ export class MainGameScene extends Phaser.Scene {
       if (state.weapon.type !== 'shieldPistol') return;
       if (this._shieldRestoreTimer) { this._shieldRestoreTimer.remove(); this._shieldRestoreTimer = null; }
       state.shieldUp = !state.shieldUp;
-      if (state.shieldUp) {
-        state.weapon.firemode = 'semi';
-        state.weapon.firerate = 90;
-        state.player.setFrame(26);
-      } else {
-        state.weapon.firemode = 'auto';
-        state.weapon.firerate = 80;
-        state.player.setFrame(28);
-      }
+      state.player.setFrame(state.shieldUp ? 26 : 28);
     });
     this.input.keyboard.on('keydown-R', () => {
       if (this.reload.active) {
@@ -479,16 +473,16 @@ export class MainGameScene extends Phaser.Scene {
               }
             };
             fireOne(3);
-          } else if (state.weapon.type === 'shieldPistol' && state.shieldUp) {
-            state.player.setFrame(27);
+          } else if (state.weapon.type === 'shieldPistol') {
+            if (state.shieldUp) state.player.setFrame(27);
             if (this._shieldRestoreTimer) this._shieldRestoreTimer.remove();
             const fireOne = (count) => {
-              if (state.weapon.type !== 'shieldPistol' || !state.shieldUp || state.weapon.ammo <= 0) return;
+              if (state.weapon.type !== 'shieldPistol' || state.weapon.ammo <= 0) return;
               shootBullet(state.player.rotation);
               this._updateLowAmmoSound();
               if (count > 1) {
                 setTimeout(() => fireOne(count - 1), burstDelay);
-              } else {
+              } else if (state.shieldUp) {
                 this._shieldRestoreTimer = this.time.delayedCall(500, () => {
                   this._shieldRestoreTimer = null;
                   if (state.weapon.type === 'shieldPistol' && state.shieldUp) state.player.setFrame(26);
@@ -752,11 +746,11 @@ export class MainGameScene extends Phaser.Scene {
     const moving = this.w.isDown || this.a.isDown || this.s.isDown || this.d.isDown;
 
     if (!this.dashing) {
-      const aimSlow = time < this._reflectSlowUntil;
-      player.body.setMaxVelocity(aimSlow ? MAX_VELOCITY * 0.5 : MAX_VELOCITY);
+      const aimSlow = (state.weapon.type === 'shieldPistol' && state.player.frame.name !== 26) || time < this._reflectSlowUntil;
+      player.body.setMaxVelocity(aimSlow ? MAX_VELOCITY * 0.75 : MAX_VELOCITY);
       if (moving) {
         if (dir.lengthSq() > 0) dir.normalize();
-        this.playerAcceleration = (10000 + state.upgrade.acceleration) * (aimSlow ? 0.5 : 1);
+        this.playerAcceleration = (10000 + state.upgrade.acceleration) * (aimSlow ? 0.75 : 1);
         legs.play('walk', true);
         const vx = player.body.velocity.x;
         const vy = player.body.velocity.y;

@@ -2,7 +2,7 @@ import * as Phaser from 'phaser';
 import { MainMenuScene } from './scenes/MainMenuScene.js';
 import { MainGameScene } from './scenes/MainGameScene.js';
 
-export const MAX_VELOCITY = 490;
+export const MAX_VELOCITY = 700;
 export const MAX_RADIUS = 1000;
 export const SPAWN_RATE = 100;
 
