@@ -4,6 +4,15 @@ import { DashLine } from '../entities/DashLine.js';
 import { spawnDashLine } from '../utils/spawners.js';
 import { MAX_VELOCITY } from '../config.js';
 
+const WEAPON_FRAMES = [
+  { name: 'PISTOL',        frame: 5  },
+  { name: 'SHOTGUN',       frame: 7  },
+  { name: 'RIFLE',         frame: 6  },
+  { name: 'SWORD',         frame: 15 },
+  { name: 'DUAL PISTOLS',  frame: 8  },
+  { name: 'SHIELD PISTOL', frame: 26 },
+];
+
 export class MainMenuScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MainMenuScene' });
@@ -92,20 +101,42 @@ export class MainMenuScene extends Phaser.Scene {
       .setInteractive()
       .on('pointerdown', () => this.scene.start('MainGameScene'));
 
-    this.add.text(0, 300, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
-      .setOrigin(0.5)
-      .setInteractive()
-      .on('pointerdown', () => this.scene.start('MainGameScene'));
-
     this.add.text(-100, -100, 'MOVEMENT:', textStyle()).setOrigin(0.5);
     this.add.text(100, -100, '[W]\n[A][S][D]', textStyle('#00ff2aff')).setOrigin(0.5);
     this.add.text(-120, 0, 'ATTACK:', textStyle()).setOrigin(0.5);
     this.add.text(100, 0, '[LEFT CLICK]', textStyle('#00ff2aff')).setOrigin(0.5);
     this.add.text(-112, 100, 'COLLECT:', textStyle()).setOrigin(0.5);
     this.add.text(100, 100, '[SPACEBAR]', textStyle('#00ff2aff')).setOrigin(0.5);
+
+    // ── Weapon selector ───────────────────────────────────────────────
+    this._selectedWeapon = 0;
+    this.add.text(-140, 210, 'WEAPON:', textStyle()).setOrigin(0.5);
+
+    this._weaponLabel = this.add.text(60, 210, WEAPON_FRAMES[0].name, textStyle('#00ff2aff')).setOrigin(0.5);
+
+    this.add.text(-240, 210, '<', textStyle())
+      .setOrigin(0.5).setInteractive()
+      .on('pointerdown', () => this._cycleWeapon(-1));
+
+    this.add.text(220, 210, '>', textStyle())
+      .setOrigin(0.5).setInteractive()
+      .on('pointerdown', () => this._cycleWeapon(1));
+
+    this.add.text(0, 300, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
+      .setOrigin(0.5)
+      .setInteractive()
+      .on('pointerdown', () => {
+        state.starterWeapon = this._selectedWeapon;
+        this.scene.start('MainGameScene');
+      });
   }
 
-  update(time, delta) {
+  _cycleWeapon(dir) {
+    this._selectedWeapon = (this._selectedWeapon + dir + WEAPON_FRAMES.length) % WEAPON_FRAMES.length;
+    this._weaponLabel.setText(WEAPON_FRAMES[this._selectedWeapon].name);
+  }
+
+  update(_time, _delta) {
     spawnDashLine();
     const pointer = this.input.mousePointer;
     const midX = (state.player.x + pointer.worldX / 6) / 2;

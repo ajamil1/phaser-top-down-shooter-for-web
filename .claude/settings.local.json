@@ -12,7 +12,12 @@
       "Bash(mkdir -p \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\scenes\" \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\entities\" \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\utils\")",
       "Bash(del \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\\\\public\\\\src\\\\classes.js\")",
       "Bash(node -e \"const p = require\\('./node_modules/phaser/package.json'\\); console.log\\(JSON.stringify\\({main: p.main, module: p.module, exports: p.exports}, null, 2\\)\\)\" --input-type=commonjs)",
-      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:p.get\\(k\\) for k in ['main','module','exports']}, indent=2\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; p=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:p.get\\(k\\) for k in ['main','module','exports']}, indent=2\\)\\)\")",
+      "mcp__nubo__list_projects",
+      "mcp__nubo__list_spaces",
+      "mcp__nubo__list_frames",
+      "mcp__nubo__get_runtime_logs",
+      "mcp__nubo__whoami"
     ],
     "additionalDirectories": [
       "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src"

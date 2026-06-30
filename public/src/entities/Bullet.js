@@ -70,14 +70,14 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.body.velocity.y = vy + player.body.velocity.y / 2;
   }
 
-  bulletReflected() {
+  bulletReflected(deflectAngle = null) {
     if (this.reflect) return;
     this.reflect = true;
     this.scaleX = -this.scaleX;
     this.setTint(0xffff69);
 
-    const deflectAngle = Phaser.Math.DegToRad(Phaser.Math.Between(-90, 90));
-    this.rotation += deflectAngle;
+    const angle = deflectAngle ?? Phaser.Math.DegToRad(Phaser.Math.Between(-90, 90));
+    this.rotation += angle;
 
     this.body.velocity.x = -0.8 * Math.cos(this.rotation) * this.velocity;
     this.body.velocity.y = -0.8 * Math.sin(this.rotation) * this.velocity;

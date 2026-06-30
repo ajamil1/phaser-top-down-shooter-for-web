@@ -14,11 +14,21 @@
       "Bash(rm -rf node_modules package-lock.json)",
       "Bash(git rm *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(ls \"C:\\\\Users\\\\Zafir\\\\.claude\\\\skills\" 2>/dev/null || echo \"no skills dir\")",
+      "Read(//c/Users/Zafir/.claude/**)",
+      "Bash(mkdir -p \"C:\\\\Users\\\\Zafir\\\\.claude\\\\skills\\\\ui-ux-pro-max\")",
+      "Edit(~/.claude/skills/ui-ux-pro-max/**)",
+      "PowerShell(npm install -g @anthropic-ai/claude-code)",
+      "PowerShell(claude mcp list)",
+      "PowerShell(claude mcp add --transport http nubo https://mcp.withnubo.com/mcp)",
+      "PowerShell(claude mcp add --transport http nubo https://mcp.withnubo.com/mcp --header \"Authorization: Bearer nubo_pat_Uwt3caBdo3HnHXdT9zelRz86I1BpDX6lDLKbcZSW\")",
+      "PowerShell(claude mcp remove nubo)"
     ],
     "additionalDirectories": [
       "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src3d",
-      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web"
+      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web",
+      "C:\\Users\\Zafir\\.claude\\skills"
     ]
   }
 }

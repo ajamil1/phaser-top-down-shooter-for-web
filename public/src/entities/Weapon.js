@@ -28,6 +28,10 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
     if (this.id === 4) {
       this.setFrame(0);
       this.overlay.setFrame(0).setVisible(true);
+    } else if (this.id === 5) {
+      this.setFrame(0);
+      this.setTint(0x44aaff);
+      this.overlay.setVisible(false);
     } else if (this.id >= 0 && this.id <= 3) {
       this.setFrame(frames[this.id]);
       this.overlay.setVisible(false);

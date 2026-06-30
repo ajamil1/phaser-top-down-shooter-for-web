@@ -43,6 +43,8 @@ export const state = {
 
   windupAmmoBonus: 0,
   dualPistolFrame: 8,
+  shieldUp: false,
+  starterWeapon: 0,
 
   // physics groups
   bullets: null,

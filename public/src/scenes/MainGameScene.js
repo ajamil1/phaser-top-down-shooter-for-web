@@ -49,6 +49,8 @@ export class MainGameScene extends Phaser.Scene {
     this._upgradeBtnObjs = null;
     this._arWindup = 0;
     this._shotgunCharge = 0;
+    this._shieldRestoreTimer = null;
+    this._reflectSlowUntil = 0;
     this.reload = {
       active: false,
       ejecting: false,
@@ -146,6 +148,17 @@ export class MainGameScene extends Phaser.Scene {
     state.enemySights = this.physics.add.group({ classType: EnemySight, maxSize: -1, runChildUpdate: true });
     state.enemyPathScanners = this.physics.add.group({ classType: EnemyPathScan, maxSize: -1, runChildUpdate: true });
 
+    const STARTER_DEFS = [
+      { type: 'pistol',      ammo: 9,  firemode: 'semi', firerate: 90 },
+      { type: 'shotgun',     ammo: 7,  firemode: 'semi', firerate: 90 },
+      { type: 'ar',          ammo: 25, firemode: 'auto', firerate: 80 },
+      { type: 'sword',       ammo: 0,  firemode: 'semi', firerate: 90 },
+      { type: 'dualPistol',  ammo: 18, firemode: 'semi', firerate: 90 },
+      { type: 'shieldPistol',ammo: 9,  firemode: 'semi', firerate: 90 },
+    ];
+    Object.assign(state.weapon, STARTER_DEFS[state.starterWeapon ?? 0]);
+    setWeapon(state.weapon.type);
+
     this._setupCollisions();
     this._setupInput();
 
@@ -198,9 +211,10 @@ export class MainGameScene extends Phaser.Scene {
         1: { type: 'shotgun',    ammo: 7,  firemode: 'semi', frame: 7 },
         2: { type: 'ar',         ammo: 25, firemode: 'auto', firerate: 80,  frame: 6 },
         3: { type: 'sword',      ammo: 25, firemode: 'auto', firerate: 150, frame: 15 },
-        4: { type: 'dualPistol', ammo: 18, firemode: 'semi', frame: 8 },
+        4: { type: 'dualPistol',    ammo: 18, firemode: 'semi', frame: 8 },
+        5: { type: 'shieldPistol', ammo: 9,  firemode: 'semi', frame: 26 },
       };
-      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, ar: 2, shotgun: 3 };
+      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, shotgun: 3 };
 
       let lastPickupTime = 0;
 
@@ -255,7 +269,45 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(delay, () => {
       this.physics.add.overlap(state.player, state.bullets, (player, bullet) => {
-        if (this.dashing) return;
+        if (this.dashing || !bullet.enemyBullet) return;
+
+        if (state.weapon.type === 'shieldPistol' && state.shieldUp) {
+          const facing = state.angleToPointer;
+          const dot = Math.cos(facing) * bullet.body.velocity.x + Math.sin(facing) * bullet.body.velocity.y;
+          if (dot < 0) {
+            bullet.enemyBullet = false;
+            const origRotation = bullet.rotation;
+            const origVelocity = bullet.velocity;
+            const spawnX = player.x + Math.cos(state.angleToPointer) * 25;
+            const spawnY = player.y + Math.sin(state.angleToPointer) * 25;
+            const alignReflected = (b) => {
+              b.scaleX = 3.5;
+              b.setRotation(Math.atan2(b.body.velocity.y, b.body.velocity.x));
+            };
+            this._reflectSlowUntil = this.time.now + 500;
+            bullet.setPosition(spawnX, spawnY);
+            bullet.bulletReflected();
+            alignReflected(bullet);
+            const b = state.bullets.get(player.x, player.y);
+            if (b) {
+              b.setActive(true); b.setVisible(true);
+              b.setPosition(spawnX, spawnY);
+              b.rotation = origRotation;
+              b.velocity = origVelocity;
+              b.reflect = false;
+              b.enemyBullet = false;
+              b.scaleY = 0.5;
+              b.damage = state.upgrade.damage + 1;
+              b.body.checkCollision.none = false;
+              b.body.setCircle(2);
+              b.body.setOffset(b.width / 2 - 2, b.height / 2 - 2);
+              b.bulletReflected();
+              alignReflected(b);
+            }
+            return;
+          }
+        }
+
         bullet.setActive(false);
         bullet.setVisible(false);
         bullet.body.checkCollision.none = true;
@@ -361,6 +413,20 @@ export class MainGameScene extends Phaser.Scene {
       }
     });
     this.input.keyboard.on('keyup-SPACE', () => { state.spaceDown = false; });
+    this.input.keyboard.on('keydown-SHIFT', () => {
+      if (state.weapon.type !== 'shieldPistol') return;
+      if (this._shieldRestoreTimer) { this._shieldRestoreTimer.remove(); this._shieldRestoreTimer = null; }
+      state.shieldUp = !state.shieldUp;
+      if (state.shieldUp) {
+        state.weapon.firemode = 'semi';
+        state.weapon.firerate = 90;
+        state.player.setFrame(26);
+      } else {
+        state.weapon.firemode = 'auto';
+        state.weapon.firerate = 80;
+        state.player.setFrame(28);
+      }
+    });
     this.input.keyboard.on('keydown-R', () => {
       if (this.reload.active) {
         if (this.reload.ejecting) this._onEjectKey();
@@ -395,6 +461,7 @@ export class MainGameScene extends Phaser.Scene {
           // charge accumulates in update(); fire happens on pointerup
         } else {
           if (this.reload.active && state.weapon.ammo > 0) this._cancelReload();
+          const burstDelay = Math.max(30, 70 - state.upgrade.firerateBonus * 8);
           if (state.weapon.type === 'dualPistol') {
             const burstFrame = state.dualPistolFrame;
             state.player.setFrame(burstFrame);
@@ -403,12 +470,29 @@ export class MainGameScene extends Phaser.Scene {
               shootBullet(state.player.rotation);
               this._updateLowAmmoSound();
               if (count > 1) {
-                setTimeout(() => fireOne(count - 1), 70);
+                setTimeout(() => fireOne(count - 1), burstDelay);
               } else {
                 const nextFrame = burstFrame === 8 ? 9 : 8;
                 state.dualPistolFrame = nextFrame;
                 state.player.setFrame(25);
                 setTimeout(() => state.player.setFrame(nextFrame), 80);
+              }
+            };
+            fireOne(3);
+          } else if (state.weapon.type === 'shieldPistol' && state.shieldUp) {
+            state.player.setFrame(27);
+            if (this._shieldRestoreTimer) this._shieldRestoreTimer.remove();
+            const fireOne = (count) => {
+              if (state.weapon.type !== 'shieldPistol' || !state.shieldUp || state.weapon.ammo <= 0) return;
+              shootBullet(state.player.rotation);
+              this._updateLowAmmoSound();
+              if (count > 1) {
+                setTimeout(() => fireOne(count - 1), burstDelay);
+              } else {
+                this._shieldRestoreTimer = this.time.delayedCall(500, () => {
+                  this._shieldRestoreTimer = null;
+                  if (state.weapon.type === 'shieldPistol' && state.shieldUp) state.player.setFrame(26);
+                });
               }
             };
             fireOne(3);
@@ -463,7 +547,7 @@ export class MainGameScene extends Phaser.Scene {
           this._updateLowAmmoSound();
         }
       }
-      if (state.weapon.type !== 'none' && state.weapon.type !== 'sword') {
+      if (state.weapon.type !== 'none' && state.weapon.type !== 'sword' && state.weapon.type !== 'shieldPistol') {
         setWeapon(state.weapon.type);
       }
     });
@@ -514,6 +598,7 @@ export class MainGameScene extends Phaser.Scene {
 
   _tryDash() {
     if (this.dashing || this.dashCharges <= 0) return;
+    if (state.weapon.type === 'shieldPistol') return;
     const { player } = state;
     const dir = new Phaser.Math.Vector2(
       (this.d.isDown ? 1 : 0) - (this.a.isDown ? 1 : 0),
@@ -667,9 +752,11 @@ export class MainGameScene extends Phaser.Scene {
     const moving = this.w.isDown || this.a.isDown || this.s.isDown || this.d.isDown;
 
     if (!this.dashing) {
+      const aimSlow = time < this._reflectSlowUntil;
+      player.body.setMaxVelocity(aimSlow ? MAX_VELOCITY * 0.5 : MAX_VELOCITY);
       if (moving) {
         if (dir.lengthSq() > 0) dir.normalize();
-        this.playerAcceleration = 10000 + state.upgrade.acceleration;
+        this.playerAcceleration = (10000 + state.upgrade.acceleration) * (aimSlow ? 0.5 : 1);
         legs.play('walk', true);
         const vx = player.body.velocity.x;
         const vy = player.body.velocity.y;
@@ -993,9 +1080,10 @@ export class MainGameScene extends Phaser.Scene {
     const BH = 5;
     const GAP = 2;
     const ROW_GAP = 3;
-    const COLS = weapon.type === 'pistol'     ? max
-               : weapon.type === 'dualPistol' ? 9
-               : weapon.type === 'ar'         ? Math.ceil(max / 2)
+    const COLS = weapon.type === 'pistol'       ? max
+               : weapon.type === 'shieldPistol' ? max
+               : weapon.type === 'dualPistol'   ? 9
+               : weapon.type === 'ar'          ? Math.ceil(max / 2)
                : max;
     const rows = Math.ceil(max / COLS);
     const gridW = COLS * (BW + GAP) - GAP;
@@ -1076,7 +1164,7 @@ export class MainGameScene extends Phaser.Scene {
   // ── Reload ─────────────────────────────────────────────────────────────────
 
   _maxAmmo(type) {
-    const base = { pistol: 9, dualPistol: 18, shotgun: 7, ar: 25 }[type] ?? 0;
+    const base = { pistol: 9, dualPistol: 18, shieldPistol: 9, shotgun: 7, ar: 25 }[type] ?? 0;
     return base + state.upgrade.ammoBonus;
   }
 
@@ -1114,6 +1202,8 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.ejectElapsed = 0;
     this.reload.windowMs = weapon.type === 'shotgun'
       ? Math.max(200, 630 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 80)
+      : weapon.type === 'shieldPistol'
+      ? Math.max(200, 1050 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 80)
       : Math.max(200, 700 + state.upgrade.ammoBonus * 20 - state.upgrade.reloadZone * 80);
   }
 
@@ -1122,7 +1212,7 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.ejecting = false;
     this.reload.qteActive = true;
     const wt = state.weapon.type;
-    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'ar') {
+    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol' || wt === 'ar') {
       state.empty_mag_sfx.setDetune(wt === 'ar' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
       this._playEmptyMagSfx(0.55);
     }
@@ -1142,7 +1232,7 @@ export class MainGameScene extends Phaser.Scene {
         state.empty_mag_sfx.setVolume(0.5);
         state.empty_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
         state.empty_mag_sfx.play();
-      } else if (wt === 'pistol' || wt === 'dualPistol') {
+      } else if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol') {
         state.reload_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
         state.reload_mag_sfx.play();
       } else if (wt === 'ar') {

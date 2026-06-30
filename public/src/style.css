@@ -4,7 +4,7 @@
   --liClr: whiteSmoke;
   --accClr: #0D0D35;
 }
-  
+
 html, body {
   overflow: hidden;
   margin: 0;
@@ -21,7 +21,7 @@ header, footer {
   align-items: center;
 }
 
-#gameCanvas { 
+#gameCanvas {
   display: flex;
   justify-content: start;
   align-items: center;

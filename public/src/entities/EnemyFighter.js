@@ -58,6 +58,9 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.stunTimer = 0;
     this._targetWeapon = null;
     this.dualPistolSide = 1;
+    this._shieldTimer = 0;
+    this._shieldReactionTimer = 0;
+    this._shieldUsed = false;
 
     const angleCount = 7;
     for (let i = 0; i < angleCount; i++) {
@@ -125,6 +128,15 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     });
 
     scene.time.addEvent({
+      delay: 400,
+      callback: () => {
+        if (!this.loop || this.weapon !== 15 || this.death || this._shieldTimer > 0) return;
+        enemyShoot(this, 15, this.rotation, this.pistol_sfx);
+      },
+      loop: true,
+    });
+
+    scene.time.addEvent({
       delay: 800,
       callback: () => {
         if (!this.loop || this.weapon !== 3 || this.death) return;
@@ -147,6 +159,12 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
         if (!that.visible) return;
         if (this.deflecting && Phaser.Math.Between(0, 2) !== 0) {
           that.bulletReflected();
+          return;
+        }
+        if (this.weapon === 15 && this._shieldTimer > 0 && !that.enemyBullet) {
+          that.setActive(false);
+          that.setVisible(false);
+          that.body.checkCollision.none = true;
           return;
         }
         const piercing = that.pierceLeft > 0;
@@ -272,6 +290,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     switch (weapon) {
       case 1:  this.setFrame(5); break;
       case 14: this.setFrame(8); break;
+      case 15: this.setFrame(27); break;
       case 2:  this.setFrame(7); break;
       case 3:  this.setFrame(6); break;
       default:
@@ -314,7 +333,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.loop = false;
     this.wallCount = 0;
     // Weighted weapon pool — sword IDs (4-10) kept to 2 entries (~14%) vs the old 7/16 (~44%)
-    const WEAPON_POOL = [0, 1, 1, 1, 2, 2, 3, 3, 5, 6, 11, 11, 12, 13, 14];
+    const WEAPON_POOL = [0, 1, 1, 1, 2, 2, 3, 3, 5, 6, 11, 11, 12, 13, 14, 15];
     this.weapon = WEAPON_POOL[Phaser.Math.Between(0, WEAPON_POOL.length - 1)];
     this.death = false;
     this.body.checkCollision.none = false;
@@ -339,6 +358,9 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.stunTimer = 0;
     this._targetWeapon = null;
     this.dualPistolSide = 1;
+    this._shieldTimer = 0;
+    this._shieldReactionTimer = 0;
+    this._shieldUsed = false;
     this._stuckTime = 0;
     this._stuckX = this.x;
     this._stuckY = this.y;
@@ -456,7 +478,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
 
     // Fist fighters scan for nearby weapons and divert to grab them
-    const isFistFighter = this.weapon === 0 || (this.weapon >= 11 && this.weapon !== 14);
+    const isFistFighter = this.weapon === 0 || (this.weapon >= 11 && this.weapon !== 14 && this.weapon !== 15);
     if (isFistFighter && !this.death) {
       if (!this._targetWeapon?.active) {
         this._targetWeapon = null;
@@ -472,7 +494,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       if (this._targetWeapon) {
         const dist = Phaser.Math.Distance.Between(this.x, this.y, this._targetWeapon.x, this._targetWeapon.y);
         if (dist < 70) {
-          const C2E = { 0: 1, 1: 2, 2: 3, 3: 5, 4: 14 };
+          const C2E = { 0: 1, 1: 2, 2: 3, 3: 5, 4: 14, 5: 15 };
           this.weapon = C2E[this._targetWeapon.id] ?? 11;
           this.setWeapon(this.weapon);
           this._targetWeapon.setActive(false);
@@ -510,6 +532,39 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       this.meleeAttack();
     } else {
       this.loop = false;
+    }
+
+    // Shield+pistol enemies — one-time, chance-based block with random reaction delay
+    if (this.weapon === 15 && !this.death && !this._shieldUsed) {
+      if (this._shieldTimer > 0) {
+        this._shieldTimer -= delta;
+        if (this._shieldTimer <= 0) {
+          this._shieldTimer = 0;
+          this._shieldUsed = true;
+          this.setFrame(27);
+        }
+      } else if (this._shieldReactionTimer > 0) {
+        this._shieldReactionTimer -= delta;
+        if (this._shieldReactionTimer <= 0) {
+          this._shieldReactionTimer = 0;
+          this._shieldTimer = Phaser.Math.Between(800, 1300);
+          this.setFrame(26);
+        }
+      } else {
+        const bulletsArr = state.bullets.getChildren();
+        for (let i = 0; i < bulletsArr.length; i++) {
+          const b = bulletsArr[i];
+          if (!b.active || b.enemyBullet) continue;
+          if (Phaser.Math.Distance.Between(this.x, this.y, b.x, b.y) < 220) {
+            if (Math.random() < 0.55) {
+              this._shieldReactionTimer = Phaser.Math.Between(80, 420);
+            } else {
+              this._shieldUsed = true; // chose not to block — won't try again
+            }
+            break;
+          }
+        }
+      }
     }
 
     // Sword enemies reactively deflect incoming bullets — only notice ~55% of the time

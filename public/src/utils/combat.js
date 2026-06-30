@@ -11,8 +11,9 @@ export function getFacingPosition(player, distance) {
 export function setWeapon(type) {
   const { player } = state;
   switch (type) {
-    case 'pistol':      player.setFrame(5); break;
-    case 'dualPistol':  player.setFrame(state.dualPistolFrame ?? 8); break;
+    case 'pistol':       player.setFrame(5); break;
+    case 'dualPistol':   player.setFrame(state.dualPistolFrame ?? 8); break;
+    case 'shieldPistol': state.shieldUp = true; player.setFrame(26); break;
     case 'ar':      player.setFrame(6); break;
     case 'shotgun': player.setFrame(7); break;
     case 'sword':   player.setFrame(15); break;
@@ -20,7 +21,7 @@ export function setWeapon(type) {
   }
 }
 
-function angleOffset(s) {
+export function angleOffset(s) {
   if (s === 0) return 0;
   return (s % 2 === 1 ? 1 : -1) * Math.ceil(s / 2) * 0.1;
 }
@@ -35,6 +36,22 @@ export function shootBullet(rotation) {
   const freeShot = Math.random() < Math.log1p(upgrade.ammoEfficiency) * 0.30 + (state.windupAmmoBonus ?? 0);
 
   switch (weapon.type) {
+    case 'shieldPistol':
+      if (weapon.ammo > 0) {
+        const shots = Math.min(1 + extraShots, weapon.ammo);
+        pistol_sfx.play();
+        pistol_sfx.setDetune(detune);
+        const spread = Math.max(0.10, 0.28 + spreadMod);
+        for (let s = 0; s < shots; s++) {
+          const bullet = bullets.get(player.x, player.y);
+          if (!bullet) break;
+          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, spread, 100, false, damage + 1);
+        }
+        mainCamera.shake(100, 0.002);
+        if (!freeShot) weapon.ammo -= shots;
+      }
+      break;
+
     case 'pistol':
       if (weapon.ammo > 0) {
         const shots = Math.min(1 + extraShots, weapon.ammo);
@@ -153,6 +170,7 @@ export function enemyShoot(enemy, weaponId, rotation, sound) {
   const detune = Phaser.Math.Between(-100, 100);
 
   switch (weaponId) {
+    case 15:
     case 1:
       sound.play();
       pistol_sfx.setDetune(detune);
