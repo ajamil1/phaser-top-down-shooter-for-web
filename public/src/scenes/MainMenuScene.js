@@ -11,6 +11,7 @@ const WEAPON_FRAMES = [
   { name: 'SWORD',         frame: 15 },
   { name: 'DUAL PISTOLS',  frame: 8  },
   { name: 'SHIELD PISTOL', frame: 26 },
+  { name: 'ARC',           frame: 29 },
 ];
 
 export class MainMenuScene extends Phaser.Scene {

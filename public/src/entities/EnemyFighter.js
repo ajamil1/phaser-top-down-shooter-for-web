@@ -149,6 +149,15 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       },
       loop: true,
     });
+
+    scene.time.addEvent({
+      delay: 80,
+      callback: () => {
+        if (!this.loop || this.weapon !== 16 || this.death || this.distance > 400) return;
+        enemyShoot(this, 16, this.rotation, this.pistol_sfx);
+      },
+      loop: true,
+    });
   }
 
   async hit(that) {
@@ -156,7 +165,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
 
     switch (objectType) {
       case 'Bullet': {
-        if (!that.visible) return;
+        if (!that.visible || that.enemyBullet) return;
         if (this.deflecting && Phaser.Math.Between(0, 2) !== 0) {
           that.bulletReflected();
           return;
@@ -183,8 +192,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
           }
           const hpBefore = this.health;
           this.health -= that.damage;
-          await spawnSpark(that.x, that.y, that.rotation + Phaser.Math.DegToRad(180));
-          if (hpBefore > 0 && !this.death) spawnXP(this.x, this.y, this);
+          spawnSpark(that.x, that.y, that.rotation + Phaser.Math.DegToRad(180));
+          if (hpBefore > 0 && !this.death && !that.arcMode) spawnXP(this.x, this.y, this);
           if (this.health <= 0) {
             this.legs.setActive(false);
             this.legs.setVisible(false);
@@ -193,6 +202,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
               this.loop = false;
               spawnCorpse(this.x, this.y, that.rotation, this.body.velocity.x, this.body.velocity.y);
               spawnWeapon(this.x, this.y, this.weapon);
+              if (that.arcMode) spawnXP(this.x, this.y);
             }
             this.death = true;
           } else {
@@ -285,12 +295,44 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     }
   }
 
+  hitByArcLine(tipX, tipY, damage) {
+    if (!this.active || this.death) return;
+    this.health -= damage;
+    spawnSpark(tipX, tipY, 0);
+    if (this.health <= 0) {
+      this.legs.setActive(false);
+      this.legs.setVisible(false);
+      this.setTintFill(0xff0051);
+      if (!this.death) {
+        this.loop = false;
+        spawnCorpse(this.x, this.y, this.rotation, this.body.velocity.x, this.body.velocity.y);
+        spawnWeapon(this.x, this.y, this.weapon);
+        spawnXP(this.x, this.y, null, 10);
+      }
+      this.death = true;
+    } else {
+      spawnXP(this.x, this.y, null, 5);
+      this.setTintFill(0xffffff);
+    }
+    setTimeout(() => {
+      if (this.health <= 0) {
+        this.legs.setActive(false);
+        this.legs.setVisible(false);
+        this.setActive(false);
+        this.setVisible(false);
+        this.body.checkCollision.none = true;
+      }
+      this.clearTint();
+    }, 50);
+  }
+
   setWeapon(weapon) {
     this.melee = false;
     switch (weapon) {
       case 1:  this.setFrame(5); break;
       case 14: this.setFrame(8); break;
       case 15: this.setFrame(27); break;
+      case 16: this.setFrame(29); break;
       case 2:  this.setFrame(7); break;
       case 3:  this.setFrame(6); break;
       default:
@@ -333,7 +375,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.loop = false;
     this.wallCount = 0;
     // Weighted weapon pool — sword IDs (4-10) kept to 2 entries (~14%) vs the old 7/16 (~44%)
-    const WEAPON_POOL = [0, 1, 1, 1, 2, 2, 3, 3, 5, 6, 11, 11, 12, 13, 14, 15];
+    const WEAPON_POOL = [0, 1, 1, 1, 2, 2, 3, 3, 5, 6, 11, 11, 12, 13, 14, 15, 16];
     this.weapon = WEAPON_POOL[Phaser.Math.Between(0, WEAPON_POOL.length - 1)];
     this.death = false;
     this.body.checkCollision.none = false;
@@ -386,18 +428,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
 
   rotate(currentAngle, inputAngle, turnSpeed) {
     const calcTurnSpeed = Phaser.Math.Clamp(turnSpeed * (30 / this.turnFactor), 0, 0.08);
-    const targetAngle = Phaser.Math.RadToDeg(inputAngle);
 
     if (this.wall !== null) {
-      let angleClamp = 0;
-      if (targetAngle >= -45 && targetAngle <= 45) angleClamp = Phaser.Math.DegToRad(0);
-      else if (targetAngle > 0 && targetAngle <= 90) angleClamp = Phaser.Math.DegToRad(45);
-      else if (targetAngle > 45 && targetAngle <= 135) angleClamp = Phaser.Math.DegToRad(90);
-      else if (targetAngle > 90 && targetAngle <= 180) angleClamp = Phaser.Math.DegToRad(135);
-      else if (targetAngle > 135 && targetAngle <= 225) angleClamp = Phaser.Math.DegToRad(180);
-      else if (targetAngle > 180 && targetAngle <= 270) angleClamp = Phaser.Math.DegToRad(225);
-      else if (targetAngle > 225) angleClamp = Phaser.Math.DegToRad(270);
-      else angleClamp = Phaser.Math.DegToRad(-45);
       if (this.fill <= 50) this.fill += 10;
     } else {
       if (this.fill > 0) this.fill--;
@@ -478,7 +510,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.distance = Phaser.Math.Distance.Between(this.x, this.y, player.x, player.y);
 
     // Fist fighters scan for nearby weapons and divert to grab them
-    const isFistFighter = this.weapon === 0 || (this.weapon >= 11 && this.weapon !== 14 && this.weapon !== 15);
+    const isFistFighter = this.weapon === 0 || (this.weapon >= 11 && this.weapon !== 14 && this.weapon !== 15 && this.weapon !== 16);
     if (isFistFighter && !this.death) {
       if (!this._targetWeapon?.active) {
         this._targetWeapon = null;
@@ -494,7 +526,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       if (this._targetWeapon) {
         const dist = Phaser.Math.Distance.Between(this.x, this.y, this._targetWeapon.x, this._targetWeapon.y);
         if (dist < 70) {
-          const C2E = { 0: 1, 1: 2, 2: 3, 3: 5, 4: 14, 5: 15 };
+          const C2E = { 0: 1, 1: 2, 2: 3, 3: 5, 4: 14, 5: 15, 6: 16 };
           this.weapon = C2E[this._targetWeapon.id] ?? 11;
           this.setWeapon(this.weapon);
           this._targetWeapon.setActive(false);

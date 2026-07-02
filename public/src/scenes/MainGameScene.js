@@ -7,6 +7,7 @@ import { UPGRADE_DEFS, UPGRADE_TYPES } from '../entities/Upgrade.js';
 import { XPOrb } from '../entities/XPOrb.js';
 import { EnemyFighter } from '../entities/EnemyFighter.js';
 import { Bullet } from '../entities/Bullet.js';
+import { Arc } from '../entities/Arc.js';
 import { EnemyBullet } from '../entities/EnemyBullet.js';
 import { Corpse } from '../entities/Corpse.js';
 import { Spark } from '../entities/Spark.js';
@@ -49,6 +50,7 @@ export class MainGameScene extends Phaser.Scene {
     this._upgradeBtnObjs = null;
     this._arWindup = 0;
     this._shotgunCharge = 0;
+    this._arcCharge = 0;
     this._shieldRestoreTimer = null;
     this._reflectSlowUntil = 0;
     this.reload = {
@@ -148,6 +150,9 @@ export class MainGameScene extends Phaser.Scene {
     state.enemySights = this.physics.add.group({ classType: EnemySight, maxSize: -1, runChildUpdate: true });
     state.enemyPathScanners = this.physics.add.group({ classType: EnemyPathScan, maxSize: -1, runChildUpdate: true });
 
+    state.arcs = [];
+    this.arcGraphics = this.add.graphics().setDepth(2);
+
     const STARTER_DEFS = [
       { type: 'pistol',      ammo: 9,  firemode: 'semi', firerate: 90 },
       { type: 'shotgun',     ammo: 7,  firemode: 'semi', firerate: 90 },
@@ -155,6 +160,7 @@ export class MainGameScene extends Phaser.Scene {
       { type: 'sword',       ammo: 0,  firemode: 'semi', firerate: 90 },
       { type: 'dualPistol',  ammo: 18, firemode: 'semi', firerate: 90 },
       { type: 'shieldPistol',ammo: 9,  firemode: 'semi', firerate: 90 },
+      { type: 'arc',         ammo: 80, firemode: 'auto', firerate: 80 },
     ];
     Object.assign(state.weapon, STARTER_DEFS[state.starterWeapon ?? 0]);
     setWeapon(state.weapon.type);
@@ -210,11 +216,12 @@ export class MainGameScene extends Phaser.Scene {
         0: { type: 'pistol',     ammo: 9,  firemode: 'semi', frame: 5 },
         1: { type: 'shotgun',    ammo: 7,  firemode: 'semi', frame: 7 },
         2: { type: 'ar',         ammo: 25, firemode: 'auto', firerate: 80,  frame: 6 },
-        3: { type: 'sword',      ammo: 25, firemode: 'auto', firerate: 150, frame: 15 },
+        3: { type: 'sword',      ammo: 25, firemode: 'auto', firerate: 80, frame: 15 },
         4: { type: 'dualPistol',    ammo: 18, firemode: 'semi', frame: 8 },
         5: { type: 'shieldPistol', ammo: 9,  firemode: 'semi', frame: 26 },
+        6: { type: 'arc',          ammo: 80, firemode: 'auto', firerate: 80, frame: 29 },
       };
-      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, shotgun: 3 };
+      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, arc: 2.5, shotgun: 3 };
 
       let lastPickupTime = 0;
 
@@ -259,7 +266,7 @@ export class MainGameScene extends Phaser.Scene {
         if (!orb.active) return;
         orb.setActive(false);
         orb.body.checkCollision.none = true;
-        this._addXP(10);
+        this._addXP(orb.amount ?? 10);
       });
     });
 
@@ -800,6 +807,15 @@ export class MainGameScene extends Phaser.Scene {
       this._shotgunCharge = 0;
     }
 
+
+    this.arcGraphics.clear();
+    for (let i = state.arcs.length - 1; i >= 0; i--) {
+      const arc = state.arcs[i];
+      arc.update(delta);
+      arc.draw(this.arcGraphics);
+      if (arc.isFullyDead()) state.arcs.splice(i, 1);
+    }
+
     this._updateReload(delta);
     this._drawReloadBar();
     this._drawAmmoBlocks();
@@ -1068,37 +1084,32 @@ export class MainGameScene extends Phaser.Scene {
 
     const { weapon, player } = state;
     const max = this._maxAmmo(weapon.type);
-    if (max === 0) return; // sword / fists — nothing to draw
-
-    const BW = 7;
-    const BH = 5;
-    const GAP = 2;
-    const ROW_GAP = 3;
-    const COLS = weapon.type === 'pistol'       ? max
-               : weapon.type === 'shieldPistol' ? max
-               : weapon.type === 'dualPistol'   ? 9
-               : weapon.type === 'ar'          ? Math.ceil(max / 2)
-               : max;
-    const rows = Math.ceil(max / COLS);
-    const gridW = COLS * (BW + GAP) - GAP;
-    const startX = player.x - gridW / 2;
-    const startY = player.y + 48;
+    if (max === 0) return;
 
     const ratio = weapon.ammo / max;
     let filledColor;
-    if (weapon.ammo === 0)      filledColor = 0xff3333;
-    else if (ratio <= 0.25)     filledColor = 0xff8800;
-    else if (ratio <= 0.5)      filledColor = 0xffdd00;
-    else                        filledColor = 0xdddddd;
+    if (weapon.ammo === 0)  filledColor = 0xff3333;
+    else if (ratio <= 0.25) filledColor = 0xff8800;
+    else if (ratio <= 0.5)  filledColor = 0xffdd00;
+    else                    filledColor = 0xdddddd;
 
-    for (let i = 0; i < max; i++) {
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
-      const bx = startX + col * (BW + GAP);
-      const by = startY + row * (BH + ROW_GAP);
-      const filled = i < weapon.ammo;
-      g.fillStyle(filled ? filledColor : 0x222222, filled ? 0.9 : 0.5);
-      g.fillRect(bx, by, BW, BH);
+    const BAR_W = 110;
+    const BAR_H = 7;
+    const sx = player.x - BAR_W / 2;
+    const sy = player.y + 48;
+
+    g.fillStyle(0x222222, 0.5);
+    g.fillRect(sx, sy, BAR_W, BAR_H);
+
+    const fillW = Math.round(BAR_W * weapon.ammo / max);
+    if (fillW > 0) { g.fillStyle(filledColor, 0.9); g.fillRect(sx, sy, fillW, BAR_H); }
+
+    if (max <= 50) {
+      g.lineStyle(1, 0x000000, 0.5);
+      for (let i = 1; i < max; i++) {
+        const lx = sx + BAR_W * i / max;
+        g.beginPath(); g.moveTo(lx, sy); g.lineTo(lx, sy + BAR_H); g.strokePath();
+      }
     }
   }
 
@@ -1158,7 +1169,7 @@ export class MainGameScene extends Phaser.Scene {
   // ── Reload ─────────────────────────────────────────────────────────────────
 
   _maxAmmo(type) {
-    const base = { pistol: 9, dualPistol: 18, shieldPistol: 9, shotgun: 7, ar: 25 }[type] ?? 0;
+    const base = { pistol: 9, dualPistol: 18, shieldPistol: 9, shotgun: 7, ar: 25, arc: 80 }[type] ?? 0;
     return base + state.upgrade.ammoBonus;
   }
 
@@ -1206,8 +1217,8 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.ejecting = false;
     this.reload.qteActive = true;
     const wt = state.weapon.type;
-    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol' || wt === 'ar') {
-      state.empty_mag_sfx.setDetune(wt === 'ar' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
+    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol' || wt === 'ar' || wt === 'arc') {
+      state.empty_mag_sfx.setDetune(wt === 'ar' || wt === 'arc' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
       this._playEmptyMagSfx(0.55);
     }
   }
@@ -1229,7 +1240,7 @@ export class MainGameScene extends Phaser.Scene {
       } else if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol') {
         state.reload_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
         state.reload_mag_sfx.play();
-      } else if (wt === 'ar') {
+      } else if (wt === 'ar' || wt === 'arc') {
         state.reload_mag_sfx.setDetune(Phaser.Math.Between(-600, -200));
         state.reload_mag_sfx.play();
       }

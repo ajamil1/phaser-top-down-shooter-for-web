@@ -9,6 +9,7 @@ function enemyWeaponToCollectible(enemyWeaponId) {
   if (enemyWeaponId >= 4 && enemyWeaponId <= 10) return 3; // sword
   if (enemyWeaponId === 14) return 4; // akimbo pistols
   if (enemyWeaponId === 15) return 5; // shield + pistol
+  if (enemyWeaponId === 16) return 6; // arc
   return null; // unarmed / punch-only
 }
 
@@ -210,10 +211,10 @@ export function clearArena() {
 
 // ── Upgrades ───────────────────────────────────────────────────────────────────
 
-export function spawnXP(x, y, linkedEnemy = null) {
+export function spawnXP(x, y, linkedEnemy = null, amount = 10) {
   const { xpOrbs } = state;
   const orb = xpOrbs.get(x, y);
-  if (orb) orb.spawn(x, y, linkedEnemy);
+  if (orb) orb.spawn(x, y, linkedEnemy, amount);
 }
 
 export function spawnWeapon(x, y, enemyWeaponId) {

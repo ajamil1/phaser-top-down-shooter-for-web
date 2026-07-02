@@ -17,6 +17,9 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.reflect = false;
     this.bounces = 0;
     this.bounceCooldown = 0;
+    this.arcMode = false;
+    this._arcTimer = 0;
+    this._arcDepth = 0;
     this.setScale(4, 1);
   }
 
@@ -31,6 +34,9 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     }
 
     this.reflect = false;
+    this.arcMode = false;
+    this._arcTimer = 0;
+    this._arcDepth = 0;
     this.bounces = enemyBullet ? 0 : state.upgrade.ricochet;
     this.pierceLeft = enemyBullet ? 0 : state.upgrade.pierce;
     this.bounceCooldown = 0;
@@ -89,19 +95,66 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.setRotation(Phaser.Math.Angle.Between(0, 0, -this.body.velocity.x, -this.body.velocity.y));
   }
 
+  fireArc(rotation, x, y, velocity, damage, depth = 0, enemyBullet = false) {
+    this.reflect = false;
+    this.arcMode = true;
+    this._arcTimer = 0;
+    this._arcDepth = depth;
+    this.bounces = 0;
+    this.pierceLeft = 0;
+    this.bounceCooldown = 0;
+    this.body.setCircle(2);
+    this.enemyBullet = enemyBullet;
+    this.body.setOffset(this.width / 2 - 2, this.height / 2 - 2);
+    this.scaleX = 3.5;
+    this.scaleY = 0.5;
+    this.lifespan = state.frames + 10;
+    this.velocity = velocity;
+    this.damage = damage;
+    this.body.checkCollision.none = false;
+    this.setTint(0x44eeff);
+    this.setActive(true);
+    this.setVisible(true);
+    this.setRotation(rotation);
+    this.setPosition(x, y);
+    this.body.velocity.x = Math.cos(rotation) * velocity;
+    this.body.velocity.y = Math.sin(rotation) * velocity;
+  }
+
   // eslint-disable-next-line no-unused-vars
-  update(_time, _delta) {
+  update(_time, delta) {
     if (this.bounceCooldown > 0) this.bounceCooldown--;
+
+    if (this.arcMode && this.active) {
+      this._arcTimer += delta;
+      if (this._arcTimer >= 5) {
+        this._arcTimer = 0;
+
+        const deflection = (Math.random() - 0.5) * 1.4;
+
+        if (this._arcDepth < 2 && Math.random() < 0.35) {
+          const split = state.bullets.get(this.x, this.y);
+          if (split) split.fireArc(this.rotation + deflection / 2, this.x, this.y, this.velocity, this.damage, this._arcDepth + 1, this.enemyBullet);
+          this.rotation -= deflection / 2;
+        } else {
+          this.rotation += deflection;
+        }
+        this.body.velocity.x = Math.cos(this.rotation) * this.velocity;
+        this.body.velocity.y = Math.sin(this.rotation) * this.velocity;
+      }
+    }
+
     this.body.velocity.x /= 1.01;
     this.body.velocity.y /= 1.01;
 
+    const fade = this.arcMode ? 0.18 : 0.04;
     if (this.scaleX >= 0) {
-      this.scaleX -= 0.04;
+      this.scaleX -= fade;
     } else {
-      this.scaleX += 0.04;
+      this.scaleX += fade;
     }
 
-    if (Math.abs(this.scaleX) <= 0.1) {
+    if (Math.abs(this.scaleX) <= (this.arcMode && !this.enemyBullet ? 1.5 : 0.1)) {
       this.setActive(false);
       this.setVisible(false);
     }

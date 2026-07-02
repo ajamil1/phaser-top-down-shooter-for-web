@@ -43,10 +43,11 @@ export class XPOrb extends Phaser.Physics.Arcade.Sprite {
     return this;
   }
 
-  spawn(x, y, linkedEnemy = null) {
+  spawn(x, y, linkedEnemy = null, amount = 10) {
     this.lifespan = 12000;
     this.hue = Math.random();
     this.speed = 0;
+    this.amount = amount;
     this.linkedEnemy = linkedEnemy;
     this.setPosition(x, y);
     this.setActive(true);

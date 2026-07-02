@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
+import { Arc } from '../entities/Arc.js';
 
 export function getFacingPosition(player, distance) {
   return {
@@ -15,6 +16,7 @@ export function setWeapon(type) {
     case 'dualPistol':   player.setFrame(state.dualPistolFrame ?? 8); break;
     case 'shieldPistol': state.shieldUp = true; player.setFrame(26); break;
     case 'ar':      player.setFrame(6); break;
+    case 'arc':     player.setFrame(29); break;
     case 'shotgun': player.setFrame(7); break;
     case 'sword':   player.setFrame(15); break;
     default:        player.setFrame(0); break;
@@ -120,6 +122,23 @@ export function shootBullet(rotation) {
       }
       break;
 
+    case 'arc':
+      if (weapon.ammo > 0) {
+        const shots = Math.min(1 + extraShots, weapon.ammo);
+        pistol_sfx.play();
+        pistol_sfx.setDetune(Phaser.Math.Between(400, 800));
+        const arcAngle = rotation + -Math.PI / 2;
+        const spawnX = player.x + Math.cos(arcAngle) * 50;
+        const spawnY = player.y + Math.sin(arcAngle) * 50;
+        for (let s = 0; s < shots; s++) {
+          const spread = (Math.random() - 0.5) * Math.max(0.05, 0.6 - upgrade.accuracy * 0.05);
+          state.arcs.push(new Arc(spawnX, spawnY, arcAngle + spread, 7000 + speedBonus, 0.8 + damage));
+        }
+        mainCamera.shake(60, 0.002);
+        if (!freeShot) weapon.ammo -= shots;
+      }
+      break;
+
     default:
       break;
   }
@@ -172,6 +191,15 @@ export function enemyShoot(enemy, weaponId, rotation, sound) {
   const detune = Phaser.Math.Between(-100, 100);
 
   switch (weaponId) {
+    case 16: {
+      sound.play();
+      pistol_sfx.setDetune(detune + 600);
+      const arcAngle = rotation + -Math.PI / 2;
+      const spawnX = enemy.x + Math.cos(arcAngle) * 50;
+      const spawnY = enemy.y + Math.sin(arcAngle) * 50;
+      state.arcs.push(new Arc(spawnX, spawnY, arcAngle, 7000, 0.15, 0, true));
+      break;
+    }
     case 15:
     case 1:
       sound.play();
