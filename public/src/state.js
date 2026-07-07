@@ -37,7 +37,7 @@ export const state = {
     ammoEfficiency: 0,
     pierce: 0,
     binaryTrigger: 0,
-    chargeShot: 0,
+    doubleBarrel: 0,
     windUp: 0,
   },
 

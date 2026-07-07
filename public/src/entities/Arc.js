@@ -1,9 +1,32 @@
+import * as Phaser from 'phaser';
 import { state } from '../state.js';
 
 const MAX_REACH = 400;
 const DEFLECT_MS = 1;
 const HIT_RADIUS = 35;
 const SPLIT_CHANCE = 0.08;
+const BULLET_CLEAR_R = 25;
+
+// Spawns a burst of arcs along worldAngle from an origin, scaled by the same
+// upgrades the arc gun uses (bulletspeed, damage, accuracy). Shared by the arc
+// weapon and the shield-pistol deflect (including deflecting enemy arcs).
+export function fireArcBurst(worldAngle, originX, originY, shots, lateralSpread = 0, forwardOffset = 50) {
+  const { upgrade, pistol_sfx } = state;
+  const speedBonus = upgrade.bulletspeed * 250;
+  const damage = upgrade.damage;
+  pistol_sfx.play();
+  pistol_sfx.setDetune(Phaser.Math.Between(400, 800));
+  // perpendicular ("horizontal") axis relative to the aim direction
+  const perpX = Math.cos(worldAngle + Math.PI / 2);
+  const perpY = Math.sin(worldAngle + Math.PI / 2);
+  for (let s = 0; s < shots; s++) {
+    const lateral = (Math.random() - 0.5) * lateralSpread;
+    const spawnX = originX + Math.cos(worldAngle) * forwardOffset + perpX * lateral;
+    const spawnY = originY + Math.sin(worldAngle) * forwardOffset + perpY * lateral;
+    const spread = (Math.random() - 0.5) * Math.max(0.05, 0.6 - upgrade.accuracy * 0.05);
+    state.arcs.push(new Arc(spawnX, spawnY, worldAngle + spread, 7000 + speedBonus, 0.8 + damage));
+  }
+}
 
 export class Arc {
   constructor(x, y, rotation, velocity, damage, depth = 0, enemyBullet = false) {
@@ -88,7 +111,22 @@ export class Arc {
       }
     }
 
-    if (!this.enemyBullet && state.enemyFighters) {
+    // Any arc zaps oncoming bullets from the opposing team out of the air.
+    if (state.bullets) {
+      for (const bul of state.bullets.getChildren()) {
+        if (!bul.active || bul.enemyBullet === this.enemyBullet) continue;
+        const bdx = newX - bul.x;
+        const bdy = newY - bul.y;
+        if (bdx * bdx + bdy * bdy < BULLET_CLEAR_R * BULLET_CLEAR_R) {
+          bul.setActive(false);
+          bul.setVisible(false);
+          bul.body.checkCollision.none = true;
+        }
+      }
+    }
+
+    // Any arc (player or enemy) damages enemies it passes over.
+    if (state.enemyFighters) {
       for (const e of state.enemyFighters.getChildren()) {
         if (!e.active || e.death || this._hitEnemies.has(e)) continue;
         const dx = newX - e.x;
@@ -104,10 +142,22 @@ export class Arc {
           }
         }
       }
-    } else if (this.enemyBullet && state.player) {
+    }
+
+    // Enemy arcs also damage the player (shield pistol can deflect them).
+    if (this.enemyBullet && state.player) {
       const dx = newX - state.player.x;
       const dy = newY - state.player.y;
       if (dx * dx + dy * dy < HIT_RADIUS * HIT_RADIUS) {
+        if (state.weapon?.type === 'shieldPistol' && state.shieldUp) {
+          const facing = state.angleToPointer;
+          const dot = Math.cos(facing) * Math.cos(this.rotation) + Math.sin(facing) * Math.sin(this.rotation);
+          if (dot < 0) {
+            fireArcBurst(facing, state.player.x, state.player.y, 1 + (state.upgrade?.multishot ?? 0), 60, 20);
+            this.active = false;
+            return;
+          }
+        }
         this.tipX = newX;
         this.tipY = newY;
         state.player.setTintFill(0xff0051);
@@ -149,7 +199,7 @@ export class Arc {
 
   draw(graphics) {
     if (this.alpha > 0) {
-      graphics.lineStyle(2, 0x44eeff, this.alpha);
+      graphics.lineStyle(2, 0xFF003C, this.alpha);
       graphics.beginPath();
       graphics.moveTo(this.kinks[0].x, this.kinks[0].y);
       for (let i = 1; i < this.kinks.length; i++) {

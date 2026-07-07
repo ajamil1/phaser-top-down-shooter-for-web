@@ -18,7 +18,7 @@ export const UPGRADE_TYPES = [
   // Ultimates — appear once (rare)
   'pierce',
   'binaryTrigger',
-  'chargeShot',
+  'doubleBarrel',
   'windUp',
 ];
 
@@ -34,7 +34,7 @@ export const UPGRADE_DEFS = {
   damage:        { rgb: [255, 50,  50],  letter: 'D' },
   pierce:        { rgb: [100, 255, 200], letter: 'P' },
   binaryTrigger: { rgb: [255, 215, 0],  letter: 'T' },
-  chargeShot:     { rgb: [255, 120, 0],  letter: 'C' },
+  doubleBarrel:   { rgb: [255, 120, 0],  letter: 'B' },
   windUp:        { rgb: [180, 80,  255], letter: 'W' },
 };
 

@@ -1,6 +1,8 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
-import { Arc } from '../entities/Arc.js';
+import { Arc, fireArcBurst } from '../entities/Arc.js';
+
+export { fireArcBurst };
 
 export function getFacingPosition(player, distance) {
   return {
@@ -40,16 +42,19 @@ export function shootBullet(rotation) {
   switch (weapon.type) {
     case 'shieldPistol':
       if (weapon.ammo > 0) {
-        const shots = Math.min(1 + extraShots, weapon.ammo);
+        const shots = Math.min(1, weapon.ammo);
         pistol_sfx.play();
         pistol_sfx.setDetune(detune);
         const spread = state.shieldUp
           ? Math.max(0.10, 0.28 + spreadMod)
           : Math.max(0.005, 0.02 + spreadMod);
+        const spawnX = player.x + Math.cos(rotation) * 8;
+        const spawnY = player.y + Math.sin(rotation) * 8;
         for (let s = 0; s < shots; s++) {
-          const bullet = bullets.get(player.x, player.y);
+          const bullet = bullets.get(spawnX, spawnY);
           if (!bullet) break;
-          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, spread, 100, false, damage + 1);
+          bullet.fire(rotation, spawnX, spawnY, 5500 + speedBonus, 6000 + speedBonus, 0.02, spread, 100, false, damage + 3);
+          bullet.scaleY = 1;
         }
         mainCamera.shake(100, 0.002);
         if (!freeShot) weapon.ammo -= shots;
@@ -92,18 +97,23 @@ export function shootBullet(rotation) {
 
     case 'shotgun':
       if (weapon.ammo > 0) {
-        const shots = Math.min(1 + extraShots, weapon.ammo);
+        // Double-barrel upgrade: fixed single shot, no multishot / ammo-efficiency scaling.
+        const dbl = upgrade.doubleBarrel > 0;
+        const shots = dbl ? 1 : Math.min(1 + extraShots, weapon.ammo);
+        const sgSpread = dbl
+          ? Math.max(0.02, 0.2 - upgrade.accuracy * 0.015)
+          : Math.max(0.02, 0.2 + spreadMod);
         shotgun_sfx.play();
         shotgun_sfx.setDetune(detune);
         for (let s = 0; s < shots; s++) {
           for (let i = 0; i <= 12; i++) {
             const bullet = bullets.get(player.x, player.y);
             if (!bullet) continue;
-            bullet.fire(rotation + angleOffset(s) * 1.5, player.x, player.y, 2000 + speedBonus, 4000 + speedBonus, 0.07, Math.max(0.02, 0.2 + spreadMod), 80, false, damage);
+            bullet.fire(rotation + angleOffset(s) * 1.5, player.x, player.y, 2000 + speedBonus, 4000 + speedBonus, 0.07, sgSpread, 80, false, damage);
           }
         }
         mainCamera.shake(100, 0.004);
-        if (!freeShot) weapon.ammo -= shots;
+        if (dbl || !freeShot) weapon.ammo -= shots;
       }
       break;
 
@@ -125,15 +135,7 @@ export function shootBullet(rotation) {
     case 'arc':
       if (weapon.ammo > 0) {
         const shots = Math.min(1 + extraShots, weapon.ammo);
-        pistol_sfx.play();
-        pistol_sfx.setDetune(Phaser.Math.Between(400, 800));
-        const arcAngle = rotation + -Math.PI / 2;
-        const spawnX = player.x + Math.cos(arcAngle) * 50;
-        const spawnY = player.y + Math.sin(arcAngle) * 50;
-        for (let s = 0; s < shots; s++) {
-          const spread = (Math.random() - 0.5) * Math.max(0.05, 0.6 - upgrade.accuracy * 0.05);
-          state.arcs.push(new Arc(spawnX, spawnY, arcAngle + spread, 7000 + speedBonus, 0.8 + damage));
-        }
+        fireArcBurst(rotation + -Math.PI / 2, player.x, player.y, shots);
         mainCamera.shake(60, 0.002);
         if (!freeShot) weapon.ammo -= shots;
       }
@@ -146,44 +148,12 @@ export function shootBullet(rotation) {
 
 export function getSwordDamage() {
   const u = state.upgrade;
-  const bulletBonus = u.bulletspeed + u.pierce + u.multishot + u.ricochet
+  // Every upgrade the player owns adds to sword damage, regardless of type.
+  const otherUpgrades = u.bulletspeed + u.pierce + u.multishot + u.ricochet
     + u.ammoEfficiency + u.firerateBonus + u.accuracy
-    + u.binaryTrigger + u.chargeShot + u.windUp;
-  return u.damage + bulletBonus;
-}
-
-export function shootChargeShotgun(rotation, chargeRatio) {
-  const { weapon, upgrade, bullets, player, mainCamera, shotgun_sfx } = state;
-  const freeShot = Math.random() < Math.log1p(upgrade.ammoEfficiency) * 0.30;
-  const maxAmmo = 7 + upgrade.ammoBonus;
-  const chargeShells = Math.max(1, Math.round(chargeRatio * maxAmmo));
-  const shellsToFire = Math.min(chargeShells, weapon.ammo);
-  if (shellsToFire <= 0) return;
-
-  const totalShots = shellsToFire + upgrade.multishot;
-  const speedBonus = upgrade.bulletspeed * 250;
-
-  // Spread scales with total clusters; goes tighter below 50% charge
-  const chargeSpreadMod = (totalShots - 1) * 0.015
-    - (chargeRatio < 0.5 ? (0.5 - chargeRatio) * 0.12 : 0)
-    - upgrade.accuracy * 0.015;
-  const spread = Math.max(0.02, 0.2 + chargeSpreadMod);
-
-  const detune = Phaser.Math.Between(-100, 100);
-  shotgun_sfx.play();
-  shotgun_sfx.setDetune(detune);
-
-  for (let s = 0; s < totalShots; s++) {
-    for (let i = 0; i <= 12; i++) {
-      const bullet = bullets.get(player.x, player.y);
-      if (!bullet) continue;
-      bullet.fire(rotation + angleOffset(s) * 1.5, player.x, player.y,
-        2000 + speedBonus, 4000 + speedBonus, 0.07, spread, 80, false, upgrade.damage);
-    }
-  }
-
-  mainCamera.shake(100, Math.min(0.02, 0.004 + shellsToFire * 0.002));
-  if (!freeShot) weapon.ammo -= shellsToFire;
+    + u.binaryTrigger + u.doubleBarrel + u.windUp
+    + u.reloadZone + Math.floor(u.ammoBonus / 3);
+  return u.damage + otherUpgrades;
 }
 
 export function enemyShoot(enemy, weaponId, rotation, sound) {
@@ -200,7 +170,19 @@ export function enemyShoot(enemy, weaponId, rotation, sound) {
       state.arcs.push(new Arc(spawnX, spawnY, arcAngle, 7000, 0.15, 0, true));
       break;
     }
-    case 15:
+    case 15: {
+      sound.play();
+      pistol_sfx.setDetune(detune);
+      const spawnX = enemy.x + Math.cos(rotation) * 8;
+      const spawnY = enemy.y + Math.sin(rotation) * 8;
+      const bullet = bullets.get(spawnX, spawnY);
+      if (bullet) {
+        bullet.fire(rotation, spawnX, spawnY, 5500, 6000, 0.02, 0.02, 100, true, 4);
+        bullet.scaleY = 1;
+      }
+      break;
+    }
+
     case 1:
       sound.play();
       pistol_sfx.setDetune(detune);
