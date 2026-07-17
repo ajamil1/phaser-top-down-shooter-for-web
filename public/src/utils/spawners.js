@@ -1,6 +1,45 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
 
+// ── Stage system ──────────────────────────────────────────────────────────────
+// Enemy weapon composition escalates in discrete stages, gated by player level.
+// Later stages require progressively more levels so the ramp stays gradual.
+const STAGE_LEVEL_THRESHOLDS = [1, 3, 5, 7, 10, 13];
+
+// Enemy weapon pools per stage. Repeated IDs = higher spawn weight.
+//   1 pistol · 2 shotgun · 3 assault rifle · 5/6 sword · 0/11/12 fists
+//   14 dual pistol · 15 shield pistol · 16 arc
+const STAGE_POOLS = [
+  // 1 — pistols, swords, fists
+  [1, 1, 5, 6, 0, 11, 12],
+  // 2 — pistols, fists, swords, some dual pistols
+  [1, 1, 1, 5, 6, 0, 11, 12, 14],
+  // 3 — dual pistols, some pistols, some swords, a few assault rifles
+  [14, 14, 14, 1, 1, 5, 6, 3],
+  // 4 — assault rifles, shotguns, pistols, swords
+  [3, 3, 2, 2, 1, 1, 5, 6],
+  // 5 — all of them + a few shield pistols
+  [1, 1, 5, 6, 2, 3, 14, 14, 15, 0],
+  // 6 — everything, including the arc gun
+  [1, 5, 6, 2, 3, 14, 15, 16, 0, 11],
+];
+
+// Chance an enemy drops its weapon on death (not guaranteed).
+const WEAPON_DROP_CHANCE = 0.35;
+
+export function getStage() {
+  let s = 0;
+  for (let i = 0; i < STAGE_LEVEL_THRESHOLDS.length; i++) {
+    if (state.level >= STAGE_LEVEL_THRESHOLDS[i]) s = i;
+  }
+  return s;
+}
+
+export function stageWeapon() {
+  const pool = STAGE_POOLS[getStage()];
+  return pool[Phaser.Math.Between(0, pool.length - 1)];
+}
+
 // Maps enemy weapon IDs to collectible weapon IDs (returns null for unarmed enemies)
 function enemyWeaponToCollectible(enemyWeaponId) {
   if (enemyWeaponId === 1) return 0; // pistol
@@ -30,13 +69,17 @@ export function spawnEnemyFighter() {
     enemyY = leader.y;
   }
 
+  // Cluster size grows with the stage — stage 1 spawns far fewer enemies.
+  const maxExtra = 1 + getStage();
+  let extras = 0;
   let reroll = Phaser.Math.Between(0, 5);
-  while (reroll >= 2) {
+  while (reroll >= 2 && extras < maxExtra) {
     const angle = Phaser.Math.FloatBetween(0, 2 * Math.PI);
     const posX = enemyX + radius * Math.cos(angle);
     const posY = enemyY + radius * Math.sin(angle);
     const extra = enemyFighters.get(player.x, player.y);
     if (extra) extra.spawn(posX, posY, radius);
+    extras++;
     reroll = Phaser.Math.Between(0, 5);
   }
 }
@@ -213,11 +256,13 @@ export function clearArena() {
 
 export function spawnXP(x, y, linkedEnemy = null, amount = 10) {
   const { xpOrbs } = state;
+  state.style = Math.min(1000, state.style + 6); // damaging enemies feeds the style meter
   const orb = xpOrbs.get(x, y);
   if (orb) orb.spawn(x, y, linkedEnemy, amount);
 }
 
-export function spawnWeapon(x, y, enemyWeaponId) {
+export function spawnWeapon(x, y, enemyWeaponId, chance = 1) {
+  if (chance < 1 && Math.random() > chance) return;
   const { weapons, player } = state;
   const collectibleId = enemyWeaponToCollectible(enemyWeaponId);
   if (collectibleId === null) return;
@@ -237,6 +282,8 @@ export function spawnSpark(x, y, r) {
 
 export function spawnCorpse(x, y, r, vx, vy) {
   const { corpses, player } = state;
+  state.kills++; // every enemy death spawns exactly one corpse
+  state.style = Math.min(1000, state.style + 60); // kills feed the style meter
   const corpse = corpses.get(player.x, player.y);
   if (corpse) corpse.spawn(x, y, r, vx, vy);
 }

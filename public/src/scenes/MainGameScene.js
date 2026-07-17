@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
-import { state } from '../state.js';
+import { state, refreshActiveUpgrades, resetRun } from '../state.js';
+import { unlockWeapon, computeScore, getLeaderboard, submitScore } from '../utils/persistence.js';
 import { DashLine } from '../entities/DashLine.js';
 import { Wall } from '../entities/Wall.js';
 import { Weapon } from '../entities/Weapon.js';
@@ -14,8 +15,43 @@ import { Spark } from '../entities/Spark.js';
 import { EnemySight } from '../entities/EnemySight.js';
 import { EnemyPathScan } from '../entities/EnemyPathScan.js';
 import { shootBullet, setWeapon, getFacingPosition, fireArcBurst } from '../utils/combat.js';
-import { spawnDashLine, spawnWall, getEnemy, spawnSpark } from '../utils/spawners.js';
+import { spawnDashLine, spawnWall, getEnemy, spawnSpark, getStage } from '../utils/spawners.js';
 import { MAX_VELOCITY, MAX_RADIUS, SPAWN_RATE } from '../config.js';
+
+// An upgrade box spawns every this-many enemy kills.
+const KILLS_PER_BOX = 12;
+// Tinker's Shop is temporarily disabled (code kept for later re-enable).
+const TINKER_SHOP_ENABLED = false;
+
+const UPGRADE_NAMES = {
+  firerate:      'FIRE RATE',   reload:        'RELOAD',
+  ammo:          'AMMO',        accuracy:      'ACCURACY',
+  multishot:     'MULTISHOT',   ricochet:      'RICOCHET',
+  ammoeff:       'AMMO EFF.',   bulletspeed:   'BULLET SPD',
+  damage:        'DAMAGE',      pierce:        'PIERCE',
+  binaryTrigger: 'BIN. TRIG.',  doubleBarrel:  'DBL BARREL',
+  windUp:        'WIND UP',
+};
+const UPGRADE_DESCS = {
+  firerate:      '+fire speed',    reload:        '+reload zone',
+  ammo:          '+3 max ammo',    accuracy:      '+accuracy',
+  multishot:     '+1 bullet',      ricochet:      '+1 bounce',
+  ammoeff:       '+ammo eff.',     bulletspeed:   '+bullet spd',
+  damage:        '+1 damage',      pierce:        '+1 pierce',
+  binaryTrigger: 'fire on release',doubleBarrel:  'shotgun 2-shot',
+  windUp:        'AR spins up',
+};
+
+// Ultrakill-style rank thresholds for the style meter (0–1000).
+const STYLE_RANKS = [
+  { min: 900, grade: 'SSS', color: '#ff44ff' },
+  { min: 750, grade: 'SS',  color: '#ff4444' },
+  { min: 600, grade: 'S',   color: '#ff8800' },
+  { min: 450, grade: 'A',   color: '#ffdd00' },
+  { min: 300, grade: 'B',   color: '#44dd66' },
+  { min: 150, grade: 'C',   color: '#44aaff' },
+  { min: 0,   grade: 'D',   color: '#888888' },
+];
 
 export class MainGameScene extends Phaser.Scene {
   constructor() {
@@ -46,8 +82,15 @@ export class MainGameScene extends Phaser.Scene {
     this._spinning = false;
     this._modalActive = false;
     this._modalObjects = [];
+    this._shopOpen = false;
+    this._shopWeapon = null;
+    this._upgradeBox = null;
+    this._gameOverActive = false;
+    this._nameInput = null;
+    this._finalScore = 0;
     this._pendingUpgrades = 0;
     this._upgradeBtnObjs = null;
+    this._nextBoxKills = KILLS_PER_BOX;
     this._arWindup = 0;
     this._arcCharge = 0;
     this._shieldRestoreTimer = null;
@@ -71,6 +114,14 @@ export class MainGameScene extends Phaser.Scene {
   preload() {}
 
   create() {
+    resetRun();
+    this._gameOverActive = false;
+
+    // Safety: never leave the name-input DOM element behind if the scene tears down.
+    this.events.once('shutdown', () => {
+      if (this._nameInput) { this._nameInput.remove(); this._nameInput = null; }
+    });
+
     state.banishing = this.sound.add('banishing', { loop: true, volume: 0.5 });
     state.banishing.play();
 
@@ -159,9 +210,10 @@ export class MainGameScene extends Phaser.Scene {
       { type: 'sword',       ammo: 0,  firemode: 'semi', firerate: 90 },
       { type: 'dualPistol',  ammo: 18, firemode: 'semi', firerate: 90 },
       { type: 'shieldPistol',ammo: 6,  firemode: 'semi', firerate: 90 },
-      { type: 'arc',         ammo: 80, firemode: 'auto', firerate: 80 },
+      { type: 'arc',         ammo: 60, firemode: 'auto', firerate: 80 },
     ];
     Object.assign(state.weapon, STARTER_DEFS[state.starterWeapon ?? 0]);
+    refreshActiveUpgrades();
     setWeapon(state.weapon.type);
 
     this._setupCollisions();
@@ -186,16 +238,40 @@ export class MainGameScene extends Phaser.Scene {
       );
     }
 
+    this.stageText = this.add.text(12, 12, 'STAGE 1', {
+      fontSize: '15px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ff8844',
+    }).setScrollFactor(0).setDepth(10);
+
+    // Survival countdown — top-center, console/terminal style.
+    this.timerText = this.add.text(this.scale.width / 2, 12, '[ 2:00 ]', {
+      fontSize: '30px', fontFamily: '"Courier New", Courier, monospace', fontStyle: 'bold',
+      fill: '#33ff66', backgroundColor: '#001100', padding: { x: 10, y: 4 },
+    }).setScrollFactor(0).setDepth(10).setOrigin(0.5, 0);
+
     this.xpBarGfx = this.add.graphics().setScrollFactor(0).setDepth(10);
-    this.levelText = this.add.text(this.scale.width - 12, 10, 'LVL 1', {
+
+    // Ultrakill-style rank in the top-right corner, with a progress meter.
+    this.styleText = this.add.text(this.scale.width - 12, 10, '', {
+      fontSize: '36px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#888888',
+    }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
+    this.styleGfx = this.add.graphics().setScrollFactor(0).setDepth(10);
+
+    this.levelText = this.add.text(this.scale.width - 12, 66, 'LVL 1', {
       fontSize: '14px', fontFamily: 'monospace', fill: '#00ff88',
     }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
 
-    this.upgradeListText = this.add.text(this.scale.width - 12, 30, '', {
+    this.upgradeListText = this.add.text(this.scale.width - 12, 86, '', {
       fontSize: '11px', fontFamily: 'monospace', fill: '#888888', align: 'right',
       lineSpacing: 3,
     }).setScrollFactor(0).setDepth(10).setOrigin(1, 0);
 
+    // Screen-edge arrow pointing at the upgrade box when it's off-screen.
+    this._boxArrow = this.add.graphics().setScrollFactor(0).setDepth(15).setVisible(false);
+    this._boxArrow.fillStyle(0xaa44ff, 0.95);
+    this._boxArrow.fillTriangle(12, 0, -5, -8, -5, 8);
+    this._boxArrowText = this.add.text(0, 0, 'U', {
+      fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#cc88ff',
+    }).setScrollFactor(0).setDepth(15).setOrigin(0.5).setVisible(false);
   }
 
   _setupCollisions() {
@@ -218,7 +294,7 @@ export class MainGameScene extends Phaser.Scene {
         3: { type: 'sword',      ammo: 25, firemode: 'auto', firerate: 80, frame: 15 },
         4: { type: 'dualPistol',    ammo: 18, firemode: 'semi', frame: 8 },
         5: { type: 'shieldPistol', ammo: 6,  firemode: 'semi', frame: 26 },
-        6: { type: 'arc',          ammo: 80, firemode: 'auto', firerate: 80, frame: 29 },
+        6: { type: 'arc',          ammo: 60, firemode: 'auto', firerate: 80, frame: 29 },
       };
       const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, arc: 2.5, shotgun: 3 };
 
@@ -237,19 +313,10 @@ export class MainGameScene extends Phaser.Scene {
         const incoming = PRIORITY[def.type] ?? -1;
         const current  = PRIORITY[state.weapon.type] ?? -1;
 
-        if (def.type === 'pistol' && (state.weapon.type === 'pistol' || state.weapon.type === 'dualPistol')) {
-          // Pistol + pistol = dual wield; extra pickups top up ammo
-          if (state.weapon.type === 'dualPistol') {
-            state.weapon.ammo = Math.min(state.weapon.ammo + 9, 18);
-          } else {
-            Object.assign(state.weapon, { type: 'dualPistol', ammo: Math.min(state.weapon.ammo + 9, 18), firemode: 'semi' });
-            state.dualPistolFrame = 8;
-            player.setFrame(8);
-          }
-          lastPickupTime = now;
-        } else if (!inSuccession || incoming >= current) {
+        if (!inSuccession || incoming >= current) {
           state.shieldUp = def.type === 'shieldPistol';
           Object.assign(state.weapon, def);
+          refreshActiveUpgrades();
           if (def.type === 'shotgun') state.weapon.ammo = Math.min(state.weapon.ammo, this._maxAmmo('shotgun'));
           if (def.type === 'dualPistol') state.dualPistolFrame = 8;
           player.setFrame(def.frame);
@@ -299,6 +366,8 @@ export class MainGameScene extends Phaser.Scene {
         bullet.setActive(false);
         bullet.setVisible(false);
         bullet.body.checkCollision.none = true;
+        state.style = Math.max(0, state.style - 120); // taking a hit tanks the style meter
+        state.timeLeft = Math.max(0, state.timeLeft - 1); // and costs a second
         player.setTintFill(0xff0051);
         state.legs.setTintFill(0xff0051);
         setTimeout(() => { player.clearTint(); state.legs.clearTint(); }, 50);
@@ -385,10 +454,11 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   _setupInput() {
-    this.w = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W);
-    this.a = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A);
-    this.s = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
-    this.d = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D);
+    // enableCapture=false so these letters still reach the game-over name input
+    this.w = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W, false);
+    this.a = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A, false);
+    this.s = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S, false);
+    this.d = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D, false);
     this.input.keyboard.on('keydown-SHIFT', () => this._tryDash());
 
 
@@ -413,10 +483,8 @@ export class MainGameScene extends Phaser.Scene {
       }
     });
     this.input.keyboard.on('keydown-ESC', () => {
-      if (this._modalActive || this._pendingUpgrades <= 0) return;
-      this._pendingUpgrades--;
-      this._hideUpgradeButton();
-      this._showLevelUpModal(this._pickUpgradeChoices());
+      if (this._shopOpen) { this._closeShop(); return; }
+      this._openLevelUp();
     });
 
     this.input.on('pointerdown', (pointer) => {
@@ -528,6 +596,7 @@ export class MainGameScene extends Phaser.Scene {
 
   _doMeleeSword() {
     if (this._swordSwingCooldown > 0 || this._swordSpinCooldown > 0 || this._spinning) return;
+    unlockWeapon('sword');
     const { player, sword_sfx } = state;
     sword_sfx.play();
     sword_sfx.setDetune(Phaser.Math.Between(-300, 300));
@@ -763,6 +832,12 @@ export class MainGameScene extends Phaser.Scene {
         rate = Math.max(rate, slowRate * Math.pow(1 / 3, this._arWindup));
         state.windupAmmoBonus = Math.pow(this._arWindup, 2) * 0.65;
       }
+      if (state.weapon.type === 'arc') {
+        // Fire rate sags as the mag drains: 100% cadence full → 50% cadence empty.
+        const max = this._maxAmmo('arc');
+        const ammoRatio = max > 0 ? Phaser.Math.Clamp(state.weapon.ammo / max, 0, 1) : 1;
+        rate = rate / (0.5 + 0.5 * ammoRatio);
+      }
       if (time - this._lastAutoShot >= rate) {
         if (state.weapon.ammo <= 0) this._dryFire();
         else { shootBullet(player.rotation); this._lastAutoShot = time; this._updateLowAmmoSound(); }
@@ -784,11 +859,21 @@ export class MainGameScene extends Phaser.Scene {
     this._drawReloadBar();
     this._drawAmmoBlocks();
     this._updateHUD();
+    this._maybeSpawnUpgradeBox();
+    this._updateBoxIndicator();
+
+    // Style meter decays constantly, faster the higher it is.
+    state.style = Math.max(0, state.style - (delta / 1000) * (20 + state.style * 0.05));
+    this._drawStyleMeter();
+
+    this._updateTimer(delta);
+    this.stageText.setText(`STAGE ${getStage() + 1}`);
+
     this._drawXPBar();
     this._drawUpgradeList();
   }
 
-  // ── XP / Level-up ─────────────────────────────────────────────────────────────
+  // ── XP (currency) / Upgrade box ────────────────────────────────────────────────
 
   _addXP(amount) {
     state.xp += amount;
@@ -800,6 +885,7 @@ export class MainGameScene extends Phaser.Scene {
       state.xp -= state.xpToLevel;
       state.level++;
       state.xpToLevel = 100 + state.level * 30;
+      state.timeLeft += 30; // each level up buys 30 more seconds
       this._pendingUpgrades++;
     }
     if (this._pendingUpgrades > 0 && !this._upgradeBtnObjs) this._showUpgradeButton();
@@ -814,7 +900,7 @@ export class MainGameScene extends Phaser.Scene {
     const countStr = this._pendingUpgrades > 1 ? `  [${this._pendingUpgrades}]` : '';
     const bg = push(this.add.rectangle(bx, by, 250, 30, 0x110022, 0.92)
       .setScrollFactor(0).setDepth(15).setStrokeStyle(1.5, 0xaa44ff, 0.9));
-    push(this.add.text(bx, by, `▲  LEVEL UP${countStr}`, {
+    push(this.add.text(bx, by, `▲  LEVEL UP [ESC]${countStr}`, {
       fontSize: '13px', fontFamily: 'monospace', fill: '#cc88ff',
     }).setScrollFactor(0).setDepth(16).setOrigin(0.5));
 
@@ -831,11 +917,7 @@ export class MainGameScene extends Phaser.Scene {
       .setScrollFactor(0).setDepth(17).setInteractive());
     zone.on('pointerover', () => bg.setFillStyle(0x220044, 0.95));
     zone.on('pointerout',  () => bg.setFillStyle(0x110022, 0.92));
-    zone.on('pointerdown', () => {
-      this._pendingUpgrades--;
-      this._hideUpgradeButton();
-      this._showLevelUpModal(this._pickUpgradeChoices());
-    });
+    zone.on('pointerdown', () => this._openLevelUp());
   }
 
   _hideUpgradeButton() {
@@ -845,9 +927,16 @@ export class MainGameScene extends Phaser.Scene {
     this._upgradeBtnObjs = null;
   }
 
+  _openLevelUp() {
+    if (this._modalActive || this._pendingUpgrades <= 0) return;
+    this._pendingUpgrades--;
+    this._hideUpgradeButton();
+    this._showLevelUpModal(this._pickUpgradeChoices());
+  }
+
   _pickUpgradeChoices() {
     const NON_STACKABLE = ['binaryTrigger', 'doubleBarrel', 'windUp'];
-    const pool = [...UPGRADE_TYPES].filter(t => !NON_STACKABLE.includes(t) || state.upgrade[t] === 0);
+    const pool = [...UPGRADE_TYPES].filter(t => !NON_STACKABLE.includes(t) || state.globalUpgrades[t] === 0);
     const choices = [];
     while (choices.length < 3 && pool.length > 0) {
       const idx = Phaser.Math.Between(0, pool.length - 1);
@@ -858,6 +947,102 @@ export class MainGameScene extends Phaser.Scene {
       }
     }
     return choices;
+  }
+
+  // Spawns a purple wall-sprite box with a "U" on it every KILLS_PER_BOX kills.
+  // Touching it opens the upgrade shop.
+  _maybeSpawnUpgradeBox() {
+    if (!TINKER_SHOP_ENABLED) return;
+    if (this._upgradeBox || state.kills < this._nextBoxKills) return;
+    this._nextBoxKills = state.kills + KILLS_PER_BOX;
+
+    const { player } = state;
+    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
+    const dist = Phaser.Math.Between(250, 450);
+    const x = player.x + Math.cos(angle) * dist;
+    const y = player.y + Math.sin(angle) * dist;
+
+    const box = this.physics.add.image(x, y, 'wall')
+      .setDisplaySize(52, 52).setTint(0xaa44ff).setDepth(3);
+    box.body.setImmovable(true);
+    const letter = this.add.text(x, y, 'U', {
+      fontSize: '26px', fontFamily: 'monospace', fontStyle: 'bold', color: '#ffffff',
+    }).setOrigin(0.5).setDepth(4);
+
+    const tween = this.tweens.add({
+      targets: [box, letter],
+      alpha: 0.55,
+      duration: 600,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
+
+    const overlap = this.physics.add.overlap(player, box, () => {
+      overlap.destroy();
+      tween.stop();
+      box.destroy();
+      letter.destroy();
+      this._upgradeBox = null;
+      this._showUpgradeShop();
+    });
+
+    this._upgradeBox = box;
+  }
+
+  // Points a screen-edge arrow at the upgrade box while it's outside the camera view.
+  _updateBoxIndicator() {
+    const box = this._upgradeBox;
+    const cam = this.cameras.main;
+    if (!box || !box.active || cam.worldView.contains(box.x, box.y)) {
+      this._boxArrow.setVisible(false);
+      this._boxArrowText.setVisible(false);
+      return;
+    }
+
+    // Direction from screen center toward the box, in screen space.
+    const cx = cam.width / 2, cy = cam.height / 2;
+    const sx = box.x - cam.worldView.x;
+    const sy = box.y - cam.worldView.y;
+    const angle = Math.atan2(sy - cy, sx - cx);
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+
+    // Clamp to the screen edge with a margin.
+    const margin = 36;
+    const scale = Math.min(
+      (cx - margin) / Math.max(Math.abs(dx), 1e-6),
+      (cy - margin) / Math.max(Math.abs(dy), 1e-6),
+    );
+    const ex = cx + dx * scale;
+    const ey = cy + dy * scale;
+
+    this._boxArrow.setPosition(ex, ey).setRotation(angle).setVisible(true);
+    this._boxArrowText.setPosition(ex - dx * 20, ey - dy * 20).setVisible(true);
+  }
+
+  _upgradeLevelOf(type, u = state.upgrade) {
+    switch (type) {
+      case 'firerate':      return u.firerateBonus;
+      case 'reload':        return u.reloadZone;
+      case 'ammo':          return Math.floor(u.ammoBonus / 3);
+      case 'accuracy':      return u.accuracy;
+      case 'multishot':     return u.multishot;
+      case 'ricochet':      return u.ricochet;
+      case 'ammoeff':       return u.ammoEfficiency;
+      case 'bulletspeed':   return u.bulletspeed;
+      case 'damage':        return u.damage - 1;
+      case 'pierce':        return u.pierce;
+      case 'binaryTrigger': return u.binaryTrigger;
+      case 'doubleBarrel':  return u.doubleBarrel;
+      case 'windUp':        return u.windUp;
+      default: return 0;
+    }
+  }
+
+  // Tinkering fee for removing (or restoring) an upgrade on one specific weapon.
+  _tinkerCost(type) {
+    const lvl = this._upgradeLevelOf(type, state.globalUpgrades);
+    return Math.max(10, 10 + lvl * 5);
   }
 
   // Freeze / unfreeze every real-time system so nothing progresses behind the modal.
@@ -896,48 +1081,9 @@ export class MainGameScene extends Phaser.Scene {
       fontSize: '40px', fontFamily: 'monospace', fill: '#ffffff', fontStyle: 'bold',
     }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
 
-    push(this.add.text(W / 2, H * 0.27, 'choose an upgrade', {
+    push(this.add.text(W / 2, H * 0.27, 'choose an upgrade — applies to all weapons', {
       fontSize: '15px', fontFamily: 'monospace', fill: '#666666',
     }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
-
-    const NAMES = {
-      firerate:      'FIRE RATE',   reload:        'RELOAD',
-      ammo:          'AMMO',        accuracy:      'ACCURACY',
-      multishot:     'MULTISHOT',   ricochet:      'RICOCHET',
-      ammoeff:       'AMMO EFF.',   bulletspeed:   'BULLET SPD',
-      damage:        'DAMAGE',      pierce:        'PIERCE',
-      binaryTrigger: 'BIN. TRIG.',  doubleBarrel:  'DBL BARREL',
-      windUp:        'WIND UP',
-    };
-    const DESCS = {
-      firerate:      '+fire speed',    reload:        '+reload zone',
-      ammo:          '+3 max ammo',    accuracy:      '+accuracy',
-      multishot:     '+1 bullet',      ricochet:      '+1 bounce',
-      ammoeff:       '+ammo eff.',     bulletspeed:   '+bullet spd',
-      damage:        '+1 damage',      pierce:        '+1 pierce',
-      binaryTrigger: 'fire on release',doubleBarrel:  'shotgun 2-shot',
-      windUp:        'AR spins up',
-    };
-
-    const upgradeLevel = type => {
-      const u = state.upgrade;
-      switch (type) {
-        case 'firerate':      return u.firerateBonus;
-        case 'reload':        return u.reloadZone;
-        case 'ammo':          return Math.floor(u.ammoBonus / 3);
-        case 'accuracy':      return u.accuracy;
-        case 'multishot':     return u.multishot;
-        case 'ricochet':      return u.ricochet;
-        case 'ammoeff':       return u.ammoEfficiency;
-        case 'bulletspeed':   return u.bulletspeed;
-        case 'damage':        return u.damage - 1;
-        case 'pierce':        return u.pierce;
-        case 'binaryTrigger': return u.binaryTrigger;
-        case 'doubleBarrel':   return u.doubleBarrel;
-        case 'windUp':        return u.windUp;
-        default: return 0;
-      }
-    };
 
     const cardW = 180, cardH = 240, gap = 28;
     const totalW = choices.length * cardW + (choices.length - 1) * gap;
@@ -963,17 +1109,16 @@ export class MainGameScene extends Phaser.Scene {
         fontSize: '22px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ffffff',
       }).setScrollFactor(0).setDepth(23).setOrigin(0.5));
 
-      push(this.add.text(cx, cy + 6, NAMES[type] ?? type.toUpperCase(), {
+      push(this.add.text(cx, cy + 6, UPGRADE_NAMES[type] ?? type.toUpperCase(), {
         fontSize: '15px', fontFamily: 'monospace', fill: colorHex, align: 'center',
         wordWrap: { width: cardW - 20 },
       }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
 
-      push(this.add.text(cx, cy + 38, DESCS[type] ?? '', {
+      push(this.add.text(cx, cy + 38, UPGRADE_DESCS[type] ?? '', {
         fontSize: '12px', fontFamily: 'monospace', fill: '#777777', align: 'center',
       }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
 
-      // Upgrade level bar
-      const level = upgradeLevel(type);
+      const level = this._upgradeLevelOf(type, state.globalUpgrades);
       const pipsW = MAX_PIPS * (PIP_W + PIP_GAP) - PIP_GAP;
       const pipsX = cx - pipsW / 2;
       const pipsY = cy + 68;
@@ -996,46 +1141,229 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   _applyLevelUpChoice(type) {
+    const u = state.globalUpgrades;
     switch (type) {
-      case 'multishot':   state.upgrade.multishot++; break;
-      case 'firerate':    state.upgrade.firerateBonus++; break;
-      case 'reload':      state.upgrade.reloadZone++; break;
-      case 'ammo':        state.upgrade.ammoBonus += 3; break;
-      case 'accuracy':    state.upgrade.accuracy++; break;
-      case 'ricochet':    state.upgrade.ricochet++; break;
-      case 'ammoeff':       state.upgrade.ammoEfficiency++; break;
-      case 'bulletspeed':   state.upgrade.bulletspeed++; break;
-      case 'damage':        state.upgrade.damage++; break;
-      case 'pierce':        state.upgrade.pierce++; break;
-      case 'binaryTrigger': state.upgrade.binaryTrigger = 1; break;
-      case 'doubleBarrel':
-        state.upgrade.doubleBarrel = 1;
-        if (state.weapon.type === 'shotgun') {
-          state.weapon.ammo = Math.min(state.weapon.ammo, this._maxAmmo('shotgun'));
-        }
-        break;
-      case 'windUp':        state.upgrade.windUp = 1; break;
+      case 'multishot':   u.multishot++; break;
+      case 'firerate':    u.firerateBonus++; break;
+      case 'reload':      u.reloadZone++; break;
+      case 'ammo':        u.ammoBonus += 3; break;
+      case 'accuracy':    u.accuracy++; break;
+      case 'ricochet':    u.ricochet++; break;
+      case 'ammoeff':       u.ammoEfficiency++; break;
+      case 'bulletspeed':   u.bulletspeed++; break;
+      case 'damage':        u.damage++; break;
+      case 'pierce':        u.pierce++; break;
+      case 'binaryTrigger': u.binaryTrigger = 1; break;
+      case 'doubleBarrel':  u.doubleBarrel = 1; break;
+      case 'windUp':        u.windUp = 1; break;
     }
+    refreshActiveUpgrades();
+    if (state.weapon.type === 'shotgun') {
+      state.weapon.ammo = Math.min(state.weapon.ammo, this._maxAmmo('shotgun'));
+    }
+
     for (const obj of this._modalObjects) obj.destroy();
     this._modalObjects = [];
     this._modalActive = false;
     this._setGameplayPaused(false);
 
-    // Drain any XP accumulated while modal was open
+    // Drain any XP accumulated while the modal was open
     while (state.xp >= state.xpToLevel) {
       state.xp -= state.xpToLevel;
       state.level++;
       state.xpToLevel = 100 + state.level * 30;
+      state.timeLeft += 30;
       this._pendingUpgrades++;
     }
 
-    // Chain directly to next screen if more are pending
+    // Chain directly to the next screen if more are pending
     if (this._pendingUpgrades > 0) {
       this._pendingUpgrades--;
       this._showLevelUpModal(this._pickUpgradeChoices());
     } else {
       this._hideUpgradeButton();
     }
+  }
+
+  _showUpgradeShop() {
+    this._modalActive = true;
+    this._shopOpen = true;
+    this._setGameplayPaused(true);
+    for (const obj of this._modalObjects) obj.destroy();
+    this._modalObjects = [];
+    const push = obj => { this._modalObjects.push(obj); return obj; };
+    const W = this.scale.width, H = this.scale.height;
+
+    // Default the tab to the held weapon on first open (fists → pistol).
+    if (!this._shopWeapon) {
+      this._shopWeapon = state.weapon.type === 'none' ? 'pistol' : state.weapon.type;
+    }
+    const wtype = this._shopWeapon;
+    const removals = state.weaponRemovals[wtype];
+
+    push(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.78)
+      .setScrollFactor(0).setDepth(20).setInteractive());
+
+    push(this.add.text(W / 2, H * 0.09, "TINKER'S SHOP", {
+      fontSize: '34px', fontFamily: 'monospace', fill: '#ffffff', fontStyle: 'bold',
+    }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
+
+    push(this.add.text(W / 2, H * 0.155, `XP: ${Math.floor(state.xp)}`, {
+      fontSize: '17px', fontFamily: 'monospace', fill: '#00ff88',
+    }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
+
+    // ── Weapon tabs — pick which gun to tinker (removals are per-weapon) ──
+    const SHOP_WEAPONS = [
+      { type: 'pistol',       label: 'PISTOL'  },
+      { type: 'dualPistol',   label: 'DUAL'    },
+      { type: 'shieldPistol', label: 'SHIELD'  },
+      { type: 'shotgun',      label: 'SHOTGUN' },
+      { type: 'ar',           label: 'AR'      },
+      { type: 'arc',          label: 'ARC'     },
+      { type: 'sword',        label: 'SWORD'   },
+    ];
+    const tabW = 96, tabH = 28, tabGap = 8;
+    const tabsTotal = SHOP_WEAPONS.length * tabW + (SHOP_WEAPONS.length - 1) * tabGap;
+    const tabY = H * 0.215;
+    SHOP_WEAPONS.forEach((w, i) => {
+      const tx = (W - tabsTotal) / 2 + i * (tabW + tabGap) + tabW / 2;
+      const selected = w.type === wtype;
+      const held = w.type === state.weapon.type;
+      const tabBg = push(this.add.rectangle(tx, tabY, tabW, tabH,
+        selected ? 0x2a1a44 : 0x0a0a0a, 0.96)
+        .setScrollFactor(0).setDepth(21)
+        .setStrokeStyle(1.5, selected ? 0xaa44ff : 0x444444, selected ? 1 : 0.6));
+      push(this.add.text(tx, tabY, w.label + (held ? ' •' : ''), {
+        fontSize: '11px', fontFamily: 'monospace', fontStyle: selected ? 'bold' : 'normal',
+        fill: selected ? '#cc88ff' : held ? '#00ff88' : '#888888',
+      }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
+      if (!selected) {
+        const tz = push(this.add.zone(tx, tabY, tabW, tabH)
+          .setScrollFactor(0).setDepth(24).setInteractive());
+        tz.on('pointerover', () => tabBg.setFillStyle(0x1e1e1e, 0.96));
+        tz.on('pointerout',  () => tabBg.setFillStyle(0x0a0a0a, 0.96));
+        tz.on('pointerdown', () => {
+          this._shopWeapon = w.type;
+          this._showUpgradeShop();
+        });
+      }
+    });
+
+    push(this.add.text(W / 2, tabY + 26, 'upgrades come from LEVEL UPS and affect all weapons — REMOVE switches one off for the selected gun  ( • = held )', {
+      fontSize: '11px', fontFamily: 'monospace', fill: '#666666',
+    }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
+
+    // Weapon-exclusive ultimates only show for their weapon.
+    const ULTIMATE_FOR = { binaryTrigger: 'pistol', doubleBarrel: 'shotgun', windUp: 'ar' };
+    const types = [...new Set(UPGRADE_TYPES)].filter(t => {
+      const only = ULTIMATE_FOR[t];
+      return !only || only === wtype;
+    });
+
+    const rowW = 440, rowH = 42, rowGap = 10;
+    const perCol = Math.ceil(types.length / 2);
+    const colX = [W / 2 - rowW / 2 - 14, W / 2 + rowW / 2 + 14];
+    const startY = H * 0.30;
+
+    // Small labelled button inside a row; returns nothing, wires its own zone.
+    const addButton = (bx, by, bw, label, strokeColor, textColor, enabled, onClick) => {
+      const btnBg = push(this.add.rectangle(bx, by, bw, 24, 0x111111, 0.95)
+        .setScrollFactor(0).setDepth(23)
+        .setStrokeStyle(1.2, strokeColor, enabled ? 0.9 : 0.25));
+      push(this.add.text(bx, by, label, {
+        fontSize: '10px', fontFamily: 'monospace', fontStyle: 'bold',
+        fill: enabled ? textColor : '#555555',
+      }).setScrollFactor(0).setDepth(24).setOrigin(0.5));
+      if (enabled) {
+        const bz = push(this.add.zone(bx, by, bw, 24)
+          .setScrollFactor(0).setDepth(25).setInteractive());
+        bz.on('pointerover', () => btnBg.setFillStyle(0x2a2a2a, 0.95));
+        bz.on('pointerout',  () => btnBg.setFillStyle(0x111111, 0.95));
+        bz.on('pointerdown', onClick);
+      }
+    };
+
+    types.forEach((type, i) => {
+      const col = Math.floor(i / perCol);
+      const row = i % perCol;
+      const cx = colX[col];
+      const cy = startY + row * (rowH + rowGap) + rowH / 2;
+
+      const def = UPGRADE_DEFS[type];
+      const [r, g, b] = def.rgb;
+      const color = (r << 16) | (g << 8) | b;
+      const colorHex = `#${color.toString(16).padStart(6, '0')}`;
+
+      const lvl = this._upgradeLevelOf(type, state.globalUpgrades);
+      const tinkerCost = this._tinkerCost(type);
+      const isUltimate = type in ULTIMATE_FOR;
+      const removedHere = removals.has(type);
+
+      // Removing needs something to remove; restoring is always meaningful.
+      const canTinker = state.xp >= tinkerCost && (removedHere || lvl > 0);
+
+      push(this.add.rectangle(cx, cy, rowW, rowH, 0x0a0a0a, 0.96)
+        .setScrollFactor(0).setDepth(21)
+        .setStrokeStyle(1.5, color, removedHere ? 0.15 : lvl > 0 ? 0.7 : 0.35));
+
+      push(this.add.rectangle(cx - rowW / 2 + 21, cy, 26, 26, color, removedHere ? 0.25 : 0.9)
+        .setScrollFactor(0).setDepth(22));
+      push(this.add.text(cx - rowW / 2 + 21, cy, def.letter, {
+        fontSize: '14px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ffffff',
+      }).setScrollFactor(0).setDepth(23).setOrigin(0.5));
+
+      const lvlStr = isUltimate ? (lvl > 0 ? '  [OWNED]' : '') : (lvl > 0 ? `  ×${lvl}` : '');
+      const offStr = removedHere ? '  [OFF]' : '';
+      push(this.add.text(cx - rowW / 2 + 42, cy - 9, `${UPGRADE_NAMES[type] ?? type}${lvlStr}${offStr}`, {
+        fontSize: '13px', fontFamily: 'monospace',
+        fill: removedHere ? '#aa4444' : lvl > 0 ? colorHex : '#888888',
+      }).setScrollFactor(0).setDepth(22).setOrigin(0, 0.5));
+      push(this.add.text(cx - rowW / 2 + 42, cy + 9, UPGRADE_DESCS[type] ?? '', {
+        fontSize: '10px', fontFamily: 'monospace', fill: '#666666',
+      }).setScrollFactor(0).setDepth(22).setOrigin(0, 0.5));
+
+      // REMOVE / RESTORE — tinker this stat for the selected gun only.
+      addButton(cx + rowW / 2 - 50, cy, 90,
+        removedHere ? `RESTORE ${tinkerCost}` : `REMOVE ${tinkerCost}`,
+        0xffaa44, removedHere ? '#ffdd88' : '#ffaa44', canTinker, () => this._toggleTinker(type));
+    });
+
+    const doneY = startY + perCol * (rowH + rowGap) + 34;
+    const doneBg = push(this.add.rectangle(W / 2, doneY, 180, 36, 0x220000, 0.95)
+      .setScrollFactor(0).setDepth(21).setStrokeStyle(1.5, 0xff4444, 0.8));
+    push(this.add.text(W / 2, doneY, 'DONE  [ESC]', {
+      fontSize: '14px', fontFamily: 'monospace', fill: '#ff8888',
+    }).setScrollFactor(0).setDepth(22).setOrigin(0.5));
+    const doneZone = push(this.add.zone(W / 2, doneY, 180, 36)
+      .setScrollFactor(0).setDepth(24).setInteractive());
+    doneZone.on('pointerover', () => doneBg.setFillStyle(0x440000, 0.95));
+    doneZone.on('pointerout',  () => doneBg.setFillStyle(0x220000, 0.95));
+    doneZone.on('pointerdown', () => this._closeShop());
+  }
+
+  // Toggle a stat off/on for the selected gun only, for an XP fee.
+  _toggleTinker(type) {
+    const removals = state.weaponRemovals[this._shopWeapon];
+    if (!removals) return;
+    const cost = this._tinkerCost(type);
+    if (state.xp < cost) return;
+    state.xp -= cost;
+    if (removals.has(type)) removals.delete(type);
+    else removals.add(type);
+    refreshActiveUpgrades();
+    if (state.weapon.type === 'shotgun') {
+      state.weapon.ammo = Math.min(state.weapon.ammo, this._maxAmmo('shotgun'));
+    }
+    this._showUpgradeShop();
+  }
+
+  _closeShop() {
+    for (const obj of this._modalObjects) obj.destroy();
+    this._modalObjects = [];
+    this._shopOpen = false;
+    this._shopWeapon = null;
+    this._modalActive = false;
+    this._setGameplayPaused(false);
   }
 
   _drawUpgradeList() {
@@ -1061,12 +1389,177 @@ export class MainGameScene extends Phaser.Scene {
     const g = this.xpBarGfx;
     g.clear();
     const W = this.scale.width;
-    const ratio = state.xpToLevel > 0 ? state.xp / state.xpToLevel : 0;
+    const ratio = state.xpToLevel > 0 ? Phaser.Math.Clamp(state.xp / state.xpToLevel, 0, 1) : 0;
     g.fillStyle(0x111111, 0.8);
     g.fillRect(0, 0, W, 6);
     g.fillStyle(0x00ff88, 1);
     g.fillRect(0, 0, W * ratio, 6);
     this.levelText.setText(`LVL ${state.level}`);
+  }
+
+  // Ultrakill-style rank readout: letter grade + progress bar within the rank.
+  _drawStyleMeter() {
+    const s = state.style;
+    const g = this.styleGfx;
+    g.clear();
+    if (s <= 0) { this.styleText.setText(''); return; }
+
+    const idx = STYLE_RANKS.findIndex(r => s >= r.min);
+    const rank = STYLE_RANKS[idx];
+    this.styleText.setText(rank.grade).setColor(rank.color);
+
+    const bandMin = rank.min;
+    const bandMax = idx === 0 ? 1000 : STYLE_RANKS[idx - 1].min;
+    const t = Phaser.Math.Clamp((s - bandMin) / (bandMax - bandMin), 0, 1);
+
+    const W = this.scale.width;
+    const BAR_W = 120, BAR_H = 5;
+    const bx = W - 12 - BAR_W, by = 52;
+    g.fillStyle(0x222222, 0.7);
+    g.fillRect(bx, by, BAR_W, BAR_H);
+    g.fillStyle(parseInt(rank.color.slice(1), 16), 0.95);
+    g.fillRect(bx, by, BAR_W * t, BAR_H);
+  }
+
+  // ── Survival timer / game over ─────────────────────────────────────────────
+
+  _updateTimer(delta) {
+    if (state.gameOver) return;
+    state.timeLeft -= delta / 1000;
+    if (state.timeLeft <= 0) {
+      state.timeLeft = 0;
+      this._triggerGameOver();
+    }
+    const t = Math.max(0, Math.ceil(state.timeLeft));
+    const m = Math.floor(t / 60);
+    const s = t % 60;
+    this.timerText.setText(`[ ${m}:${s.toString().padStart(2, '0')} ]`);
+    this.timerText.setColor(state.timeLeft <= 10 ? '#ff4444' : state.timeLeft <= 30 ? '#ffcc44' : '#33ff66');
+  }
+
+  _triggerGameOver() {
+    if (this._gameOverActive) return;
+    this._gameOverActive = true;
+    this._modalActive = true;
+    state.gameOver = true;
+    this._setGameplayPaused(true);
+    this._showGameOverScreen();
+  }
+
+  _showGameOverScreen() {
+    this._finalScore = computeScore();
+    for (const obj of this._modalObjects) obj.destroy();
+    this._modalObjects = [];
+    const push = obj => { this._modalObjects.push(obj); return obj; };
+    const W = this.scale.width, H = this.scale.height;
+
+    push(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.85)
+      .setScrollFactor(0).setDepth(30).setInteractive());
+
+    push(this.add.text(W / 2, H * 0.16, 'GAME OVER', {
+      fontSize: '52px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ff4444',
+    }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+
+    push(this.add.text(W / 2, H * 0.28, `SCORE  ${this._finalScore}`, {
+      fontSize: '28px', fontFamily: 'monospace', fill: '#ffcc44',
+    }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+
+    push(this.add.text(W / 2, H * 0.35, `${state.kills} kills · level ${state.level}`, {
+      fontSize: '15px', fontFamily: 'monospace', fill: '#888888',
+    }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+
+    push(this.add.text(W / 2, H * 0.44, 'enter your name:', {
+      fontSize: '15px', fontFamily: 'monospace', fill: '#aaaaaa',
+    }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+
+    // Real HTML input overlaid on the canvas.
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 12;
+    input.placeholder = 'YOUR NAME';
+    Object.assign(input.style, {
+      position: 'fixed', left: '50%', top: '50%',
+      transform: 'translate(-50%, -50%)', width: '260px', padding: '10px',
+      fontSize: '22px', fontFamily: 'monospace', textAlign: 'center',
+      background: '#111111', color: '#ffffff', border: '2px solid #ffcc44',
+      outline: 'none', textTransform: 'uppercase', zIndex: '1000',
+    });
+    document.body.appendChild(input);
+    setTimeout(() => input.focus(), 0);
+    this._nameInput = input;
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') this._submitScore();
+    });
+
+    const submitBg = push(this.add.rectangle(W / 2 - 90, H * 0.62, 150, 40, 0x113311, 0.95)
+      .setScrollFactor(0).setDepth(31).setStrokeStyle(1.5, 0x44ff88, 0.9));
+    push(this.add.text(W / 2 - 90, H * 0.62, 'SUBMIT', {
+      fontSize: '16px', fontFamily: 'monospace', fill: '#88ffaa',
+    }).setScrollFactor(0).setDepth(32).setOrigin(0.5));
+    const submitZone = push(this.add.zone(W / 2 - 90, H * 0.62, 150, 40)
+      .setScrollFactor(0).setDepth(33).setInteractive());
+    submitZone.on('pointerover', () => submitBg.setFillStyle(0x225522, 0.95));
+    submitZone.on('pointerout',  () => submitBg.setFillStyle(0x113311, 0.95));
+    submitZone.on('pointerdown', () => this._submitScore());
+
+    const skipBg = push(this.add.rectangle(W / 2 + 90, H * 0.62, 150, 40, 0x222222, 0.95)
+      .setScrollFactor(0).setDepth(31).setStrokeStyle(1.5, 0x888888, 0.7));
+    push(this.add.text(W / 2 + 90, H * 0.62, 'SKIP', {
+      fontSize: '16px', fontFamily: 'monospace', fill: '#aaaaaa',
+    }).setScrollFactor(0).setDepth(32).setOrigin(0.5));
+    const skipZone = push(this.add.zone(W / 2 + 90, H * 0.62, 150, 40)
+      .setScrollFactor(0).setDepth(33).setInteractive());
+    skipZone.on('pointerover', () => skipBg.setFillStyle(0x444444, 0.95));
+    skipZone.on('pointerout',  () => skipBg.setFillStyle(0x222222, 0.95));
+    skipZone.on('pointerdown', () => this._returnToMenu());
+  }
+
+  _submitScore() {
+    const name = (this._nameInput?.value || '').trim() || 'ANON';
+    submitScore(name, this._finalScore);
+    this._showLeaderboard();
+  }
+
+  _showLeaderboard() {
+    if (this._nameInput) { this._nameInput.remove(); this._nameInput = null; }
+    for (const obj of this._modalObjects) obj.destroy();
+    this._modalObjects = [];
+    const push = obj => { this._modalObjects.push(obj); return obj; };
+    const W = this.scale.width, H = this.scale.height;
+
+    push(this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0.9)
+      .setScrollFactor(0).setDepth(30).setInteractive());
+    push(this.add.text(W / 2, H * 0.14, 'LEADERBOARD', {
+      fontSize: '40px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#ffcc44',
+    }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+
+    const scores = getLeaderboard();
+    scores.slice(0, 10).forEach((row, i) => {
+      const mine = row.score === this._finalScore;
+      const y = H * 0.26 + i * 34;
+      push(this.add.text(W / 2, y, `${(i + 1).toString().padStart(2)}.  ${row.name.padEnd(12)}  ${row.score}`, {
+        fontSize: '18px', fontFamily: 'monospace', fill: mine ? '#00ff88' : '#cccccc',
+      }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+    });
+
+    const menuBg = push(this.add.rectangle(W / 2, H * 0.9, 200, 44, 0x220000, 0.95)
+      .setScrollFactor(0).setDepth(31).setStrokeStyle(1.5, 0xff4444, 0.8));
+    push(this.add.text(W / 2, H * 0.9, 'MAIN MENU', {
+      fontSize: '18px', fontFamily: 'monospace', fill: '#ff8888',
+    }).setScrollFactor(0).setDepth(32).setOrigin(0.5));
+    const menuZone = push(this.add.zone(W / 2, H * 0.9, 200, 44)
+      .setScrollFactor(0).setDepth(33).setInteractive());
+    menuZone.on('pointerover', () => menuBg.setFillStyle(0x440000, 0.95));
+    menuZone.on('pointerout',  () => menuBg.setFillStyle(0x220000, 0.95));
+    menuZone.on('pointerdown', () => this._returnToMenu());
+  }
+
+  _returnToMenu() {
+    if (this._nameInput) { this._nameInput.remove(); this._nameInput = null; }
+    this._setGameplayPaused(false); // restore global anim/physics/time state before leaving
+    if (state.banishing) state.banishing.stop();
+    this.scene.start('MainMenuScene');
   }
 
   _drawAmmoBlocks() {
@@ -1164,7 +1657,7 @@ export class MainGameScene extends Phaser.Scene {
   _maxAmmo(type) {
     // Double-barrel locks the shotgun to 2 shells, ignoring ammo-count upgrades.
     if (type === 'shotgun' && state.upgrade.doubleBarrel > 0) return 2;
-    const base = { pistol: 9, dualPistol: 18, shieldPistol: 6, shotgun: 7, ar: 25, arc: 80 }[type] ?? 0;
+    const base = { pistol: 9, dualPistol: 18, shieldPistol: 6, shotgun: 7, ar: 25, arc: 60 }[type] ?? 0;
     return base + state.upgrade.ammoBonus;
   }
 

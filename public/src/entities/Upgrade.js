@@ -4,17 +4,18 @@ import { state } from '../state.js';
 const ATTRACT_RADIUS = 240;
 const BALL_R = 16;
 
-// Common entries appear twice (higher weight), rare once
+// Weighted pool — entries appearing more often are offered more often.
+// damage and multishot are deliberately rare (as rare as the ultimates).
 export const UPGRADE_TYPES = [
   'firerate',   'firerate',
   'reload',     'reload',
   'ammo',       'ammo',
   'accuracy',   'accuracy',
   'bulletspeed','bulletspeed',
-  'damage',     'damage',
+  'ricochet',   'ricochet',
+  'ammoeff',    'ammoeff',
+  'damage',
   'multishot',
-  'ricochet',
-  'ammoeff',
   // Ultimates — appear once (rare)
   'pierce',
   'binaryTrigger',

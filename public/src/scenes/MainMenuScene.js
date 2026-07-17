@@ -3,15 +3,16 @@ import { state } from '../state.js';
 import { DashLine } from '../entities/DashLine.js';
 import { spawnDashLine } from '../utils/spawners.js';
 import { MAX_VELOCITY } from '../config.js';
+import { isWeaponUnlocked, getLeaderboard } from '../utils/persistence.js';
 
 const WEAPON_FRAMES = [
-  { name: 'PISTOL',        frame: 5  },
-  { name: 'SHOTGUN',       frame: 7  },
-  { name: 'RIFLE',         frame: 6  },
-  { name: 'SWORD',         frame: 15 },
-  { name: 'DUAL PISTOLS',  frame: 8  },
-  { name: 'SHIELD PISTOL', frame: 26 },
-  { name: 'ARC',           frame: 29 },
+  { name: 'PISTOL',        frame: 5,  type: 'pistol'       },
+  { name: 'SHOTGUN',       frame: 7,  type: 'shotgun'      },
+  { name: 'RIFLE',         frame: 6,  type: 'ar'           },
+  { name: 'SWORD',         frame: 15, type: 'sword'        },
+  { name: 'DUAL PISTOLS',  frame: 8,  type: 'dualPistol'   },
+  { name: 'SHIELD PISTOL', frame: 26, type: 'shieldPistol' },
+  { name: 'ARC',           frame: 29, type: 'arc'          },
 ];
 
 export class MainMenuScene extends Phaser.Scene {
@@ -113,7 +114,7 @@ export class MainMenuScene extends Phaser.Scene {
     this._selectedWeapon = 0;
     this.add.text(-140, 210, 'WEAPON:', textStyle()).setOrigin(0.5);
 
-    this._weaponLabel = this.add.text(60, 210, WEAPON_FRAMES[0].name, textStyle('#00ff2aff')).setOrigin(0.5);
+    this._weaponLabel = this.add.text(60, 210, '', textStyle('#00ff2aff')).setOrigin(0.5);
 
     this.add.text(-240, 210, '<', textStyle())
       .setOrigin(0.5).setInteractive()
@@ -123,18 +124,45 @@ export class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5).setInteractive()
       .on('pointerdown', () => this._cycleWeapon(1));
 
-    this.add.text(0, 300, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
+    this._startBtn = this.add.text(0, 300, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
       .setOrigin(0.5)
       .setInteractive()
       .on('pointerdown', () => {
+        if (!isWeaponUnlocked(WEAPON_FRAMES[this._selectedWeapon].type)) return;
         state.starterWeapon = this._selectedWeapon;
         this.scene.start('MainGameScene');
       });
+
+    this._updateWeaponLabel();
+    this._buildLeaderboard();
   }
 
   _cycleWeapon(dir) {
     this._selectedWeapon = (this._selectedWeapon + dir + WEAPON_FRAMES.length) % WEAPON_FRAMES.length;
-    this._weaponLabel.setText(WEAPON_FRAMES[this._selectedWeapon].name);
+    this._updateWeaponLabel();
+  }
+
+  _updateWeaponLabel() {
+    const w = WEAPON_FRAMES[this._selectedWeapon];
+    const unlocked = isWeaponUnlocked(w.type);
+    this._weaponLabel.setText(unlocked ? w.name : `${w.name}  [LOCKED]`)
+      .setColor(unlocked ? '#00ff2aff' : '#ff4444');
+    if (this._startBtn) {
+      this._startBtn.setAlpha(unlocked ? 1 : 0.35);
+      this._startBtn.setText(unlocked ? 'START' : 'LOCKED — find & use it in a run');
+    }
+  }
+
+  _buildLeaderboard() {
+    const scores = getLeaderboard().slice(0, 5);
+    const style = { fontSize: '18px', fontFamily: 'monospace', fill: '#888888', align: 'left' };
+    this.add.text(-560, -220, 'LEADERBOARD', { ...style, fill: '#ffcc44', fontSize: '20px' }).setOrigin(0, 0);
+    if (scores.length === 0) {
+      this.add.text(-560, -185, 'no scores yet', style).setOrigin(0, 0);
+      return;
+    }
+    const lines = scores.map((s, i) => `${i + 1}. ${s.name.padEnd(12)} ${s.score}`);
+    this.add.text(-560, -185, lines.join('\n'), { ...style, lineSpacing: 6 }).setOrigin(0, 0);
   }
 
   update(_time, _delta) {

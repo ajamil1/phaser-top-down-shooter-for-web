@@ -160,6 +160,8 @@ export class Arc {
         }
         this.tipX = newX;
         this.tipY = newY;
+        state.style = Math.max(0, state.style - 120); // taking a hit tanks the style meter
+        state.timeLeft = Math.max(0, state.timeLeft - 1); // and costs a second
         state.player.setTintFill(0xff0051);
         if (state.legs) state.legs.setTintFill(0xff0051);
         setTimeout(() => {

@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
-import { spawnSpark, spawnCorpse, spawnWeapon, spawnXP } from '../utils/spawners.js';
+import { spawnSpark, spawnCorpse, spawnWeapon, spawnXP, stageWeapon } from '../utils/spawners.js';
 import { enemyShoot, getSwordDamage } from '../utils/combat.js';
 import { hasLineOfSight } from '../utils/pathfinding.js';
 
@@ -19,6 +19,9 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setOrigin(0.5);
     this.legs.setScale(3);
     this.legs.setDepth(0);
+
+    this.dotGfx = scene.add.graphics().setDepth(3).setVisible(false);
+    this.upgradeLevel = 0;
 
     this.setActive(false);
     this.setVisible(false);
@@ -201,7 +204,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
             if (!this.death) {
               this.loop = false;
               spawnCorpse(this.x, this.y, that.rotation, this.body.velocity.x, this.body.velocity.y);
-              spawnWeapon(this.x, this.y, this.weapon);
+              spawnWeapon(this.x, this.y, this.weapon, 0.35);
               if (that.arcMode) spawnXP(this.x, this.y);
             }
             this.death = true;
@@ -239,7 +242,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
             if (!this.death && that !== state.player) {
               this.loop = false;
               spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y);
-              spawnWeapon(this.x, this.y, this.weapon);
+              spawnWeapon(this.x, this.y, this.weapon, 0.35);
             }
             this.death = true;
             that.body.checkCollision.none = false;
@@ -283,7 +286,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
             this.body.checkCollision.none = true;
             if (!this.death && that.isPlayerMelee) {
               spawnCorpse(this.x, this.y, this.rotation + Phaser.Math.DegToRad(90), this.body.velocity.x, this.body.velocity.y);
-              spawnWeapon(this.x, this.y, this.weapon);
+              spawnWeapon(this.x, this.y, this.weapon, 0.35);
               spawnXP(this.x, this.y);
             }
             this.death = true;
@@ -306,7 +309,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       if (!this.death) {
         this.loop = false;
         spawnCorpse(this.x, this.y, this.rotation, this.body.velocity.x, this.body.velocity.y);
-        spawnWeapon(this.x, this.y, this.weapon);
+        spawnWeapon(this.x, this.y, this.weapon, 0.35);
         spawnXP(this.x, this.y, null, 10);
       }
       this.death = true;
@@ -324,6 +327,30 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       }
       this.clearTint();
     }, 50);
+  }
+
+  setActive(value) {
+    super.setActive(value);
+    if (!value) this.dotGfx?.setVisible(false);
+    return this;
+  }
+
+  // One dot per upgrade level, colored by tier (green → yellow → orange → red → purple).
+  _drawUpgradeDots() {
+    const g = this.dotGfx;
+    g.clear();
+    const lvl = this.upgradeLevel;
+    if (lvl <= 0) return;
+    const COLORS = [0x44dd66, 0xffdd00, 0xff8800, 0xff3333, 0xcc66ff];
+    const color = COLORS[Math.min(lvl, COLORS.length) - 1];
+    const R = 3, GAP = 9;
+    const startX = -((lvl - 1) * GAP) / 2;
+    for (let i = 0; i < lvl; i++) {
+      g.fillStyle(0x000000, 0.6);
+      g.fillCircle(startX + i * GAP, 0, R + 1.5);
+      g.fillStyle(color, 1);
+      g.fillCircle(startX + i * GAP, 0, R);
+    }
   }
 
   setWeapon(weapon) {
@@ -374,16 +401,22 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.turnScale = 1;
     this.loop = false;
     this.wallCount = 0;
-    // Weighted weapon pool — sword IDs (4-10) kept to 2 entries (~14%) vs the old 7/16 (~44%)
-    const WEAPON_POOL = [0, 1, 1, 1, 2, 2, 3, 3, 5, 6, 11, 11, 12, 13, 14, 15, 16];
-    this.weapon = WEAPON_POOL[Phaser.Math.Between(0, WEAPON_POOL.length - 1)];
+    // Weapon composition is driven by the current stage (see spawners.js).
+    this.weapon = stageWeapon();
+
+    // Enemies upgrade as the game goes on: +1 level per ~4000 frames, capped at 5,
+    // with some spawning a level behind the curve.
+    const baseLvl = Math.floor(state.frames / 4000);
+    this.upgradeLevel = Phaser.Math.Clamp(baseLvl + Phaser.Math.Between(-1, 0), 0, 5);
+    this._drawUpgradeDots();
+
     this.death = false;
     this.body.checkCollision.none = false;
     this.setActive(true);
     this.setVisible(true);
     this.clearTint();
     this.setScale(3);
-    this.speed = Phaser.Math.Between(400, 550);
+    this.speed = Phaser.Math.Between(400, 550) + this.upgradeLevel * 30;
     this.setMaxVelocity(this.speed);
     this.power = Math.floor(this.scale);
     this.legs.play('walk', true);
@@ -396,7 +429,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       this.birth = false;
     }
 
-    this.health = 1 + Math.floor(state.frames / 3600);
+    this.health = 1 + this.upgradeLevel;
     this.stunTimer = 0;
     this._targetWeapon = null;
     this.dualPistolSide = 1;
@@ -490,6 +523,9 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this.legs.setPosition(this.x, this.y);
     this.legs.setActive(true);
     this.legs.setVisible(true);
+
+    this.dotGfx.setPosition(this.x, this.y - 44);
+    this.dotGfx.setVisible(!this.death && this.upgradeLevel > 0);
 
     const vx = this.body.velocity.x;
     const vy = this.body.velocity.y;

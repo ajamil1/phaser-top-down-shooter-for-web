@@ -1,6 +1,7 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
 import { Arc, fireArcBurst } from '../entities/Arc.js';
+import { unlockWeapon } from './persistence.js';
 
 export { fireArcBurst };
 
@@ -32,6 +33,7 @@ export function angleOffset(s) {
 
 export function shootBullet(rotation) {
   const { weapon, upgrade, bullets, player, mainCamera, pistol_sfx, shotgun_sfx, rifle_sfx } = state;
+  unlockWeapon(weapon.type); // using a weapon in a run unlocks it as a starter
   const detune = Phaser.Math.Between(-100, 100);
   const speedBonus = upgrade.bulletspeed * 250;
   const spreadMod = upgrade.multishot * 0.015 - upgrade.accuracy * 0.015;
