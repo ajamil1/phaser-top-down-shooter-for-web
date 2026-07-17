@@ -2,9 +2,9 @@ import * as Phaser from 'phaser';
 import { state } from '../state.js';
 
 // ── Stage system ──────────────────────────────────────────────────────────────
-// Enemy weapon composition escalates in discrete stages, gated by player level.
-// Later stages require progressively more levels so the ramp stays gradual.
-const STAGE_LEVEL_THRESHOLDS = [1, 3, 5, 7, 10, 13];
+// Enemy weapon composition escalates in discrete stages, gated by time survived.
+// Evenly spaced (every 45s) so the ramp is gradual and slow, not compounding.
+const STAGE_TIME_THRESHOLDS = [0, 45, 90, 135, 180, 225]; // seconds
 
 // Enemy weapon pools per stage. Repeated IDs = higher spawn weight.
 //   1 pistol · 2 shotgun · 3 assault rifle · 5/6 sword · 0/11/12 fists
@@ -29,8 +29,8 @@ const WEAPON_DROP_CHANCE = 0.35;
 
 export function getStage() {
   let s = 0;
-  for (let i = 0; i < STAGE_LEVEL_THRESHOLDS.length; i++) {
-    if (state.level >= STAGE_LEVEL_THRESHOLDS[i]) s = i;
+  for (let i = 0; i < STAGE_TIME_THRESHOLDS.length; i++) {
+    if (state.elapsed >= STAGE_TIME_THRESHOLDS[i]) s = i;
   }
   return s;
 }

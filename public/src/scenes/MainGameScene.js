@@ -56,6 +56,11 @@ const STYLE_RANKS = [
 export class MainGameScene extends Phaser.Scene {
   constructor() {
     super({ key: 'MainGameScene' });
+  }
+
+  // Runs on every scene.start (including restarts) — resets all per-run instance
+  // state so a fresh game never inherits the previous game's flags.
+  init() {
     this.meleeFrame = 0;
     this.meleeHitbox = null;
     this.meleeX = 0;
@@ -115,7 +120,6 @@ export class MainGameScene extends Phaser.Scene {
 
   create() {
     resetRun();
-    this._gameOverActive = false;
 
     // Safety: never leave the name-input DOM element behind if the scene tears down.
     this.events.once('shutdown', () => {
@@ -866,6 +870,7 @@ export class MainGameScene extends Phaser.Scene {
     state.style = Math.max(0, state.style - (delta / 1000) * (20 + state.style * 0.05));
     this._drawStyleMeter();
 
+    state.elapsed += delta / 1000; // seconds survived — drives the difficulty ramp
     this._updateTimer(delta);
     this.stageText.setText(`STAGE ${getStage() + 1}`);
 

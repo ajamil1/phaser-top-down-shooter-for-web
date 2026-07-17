@@ -404,9 +404,9 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     // Weapon composition is driven by the current stage (see spawners.js).
     this.weapon = stageWeapon();
 
-    // Enemies upgrade as the game goes on: +1 level per ~4000 frames, capped at 5,
+    // Enemies upgrade slowly over time: +1 level per 60s survived, capped at 5,
     // with some spawning a level behind the curve.
-    const baseLvl = Math.floor(state.frames / 4000);
+    const baseLvl = Math.floor(state.elapsed / 60);
     this.upgradeLevel = Phaser.Math.Clamp(baseLvl + Phaser.Math.Between(-1, 0), 0, 5);
     this._drawUpgradeDots();
 

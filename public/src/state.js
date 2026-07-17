@@ -60,6 +60,7 @@ export function resetRun() {
   state.level = 1;
   state.kills = 0;
   state.style = 0;
+  state.elapsed = 0;
   state.timeLeft = 120;
   state.gameOver = false;
   state.shieldUp = false;
@@ -105,6 +106,7 @@ export const state = {
   level: 1,
   kills: 0,
   style: 0,
+  elapsed: 0,
   timeLeft: 120,
   gameOver: false,
 
