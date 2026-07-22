@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { state } from '../state.js';
+import { state, DIFFICULTIES } from '../state.js';
 
 // ── Stage system ──────────────────────────────────────────────────────────────
 // Enemy weapon composition escalates in discrete stages, gated by time survived.
@@ -283,6 +283,7 @@ export function spawnSpark(x, y, r) {
 export function spawnCorpse(x, y, r, vx, vy) {
   const { corpses, player } = state;
   state.kills++; // every enemy death spawns exactly one corpse
+  state.timeLeft += (DIFFICULTIES[state.difficulty] ?? DIFFICULTIES[1]).perKill; // difficulty-scaled time refund
   state.style = Math.min(1000, state.style + 60); // kills feed the style meter
   const corpse = corpses.get(player.x, player.y);
   if (corpse) corpse.spawn(x, y, r, vx, vy);

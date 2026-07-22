@@ -26,6 +26,14 @@ export function makeUpgradeBlock() {
 
 export const WEAPON_TYPES = ['none', 'pistol', 'dualPistol', 'shieldPistol', 'shotgun', 'ar', 'arc', 'sword'];
 
+// Difficulty scales how many seconds each kill refunds. state.difficulty indexes this.
+export const DIFFICULTIES = [
+  { name: 'EASY',   perKill: 1 },
+  { name: 'NORMAL', perKill: 0.5 },
+  { name: 'HARD',   perKill: 0.25 },
+  { name: 'HARDER', perKill: 0.1 },
+];
+
 // Upgrades are global (affect every weapon), but the Tinker's Shop can remove
 // specific upgrade types from specific weapons. weaponRemovals holds, per
 // weapon, the set of shop upgrade types that are switched off for it.
@@ -109,6 +117,7 @@ export const state = {
   elapsed: 0,
   timeLeft: 120,
   gameOver: false,
+  difficulty: 1, // index into DIFFICULTIES; chosen in the menu, persists across runs
 
   globalUpgrades,
   weaponRemovals,

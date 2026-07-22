@@ -85,6 +85,29 @@ export class MainGameScene extends Phaser.Scene {
     this._swordSwingCooldown = 0;
     this._swordSpinCooldown = 0;
     this._spinning = false;
+    this._spinElapsed = 0;       // ms into the current spin
+    this._spinDir = 1;           // +1 clockwise (right), -1 counter-clockwise (left)
+    this._spinStartRot = 0;      // player rotation captured when the spin began
+    this._spinTurns = 1;         // Whirlwind: full rotations per spin, ranks up with multishot
+    // Spin finisher frame timeline: two wind-up frames, the rotating frame (one full
+    // body turn — the only phase that damages), then two recovery frames.
+    this._rightSpinTimeline = [
+      { frame: 16, dur: 50,  rotate: false },
+      { frame: 17, dur: 50,  rotate: false },
+      { frame: 18, dur: 250, rotate: true  },
+      { frame: 19, dur: 50,  rotate: false },
+      { frame: 24, dur: 50,  rotate: false },
+      
+    ];
+    this._leftSpinTimeline = [
+      { frame: 23, dur: 50,  rotate: false },
+      { frame: 22, dur: 50,  rotate: false },
+      { frame: 21, dur: 250, rotate: true  },
+      { frame: 20, dur: 50,  rotate: false },
+      { frame: 15, dur: 50,  rotate: false },
+      
+    ];
+    this._spinTimeline = this._rightSpinTimeline; // active timeline, chosen per spin
     this._modalActive = false;
     this._modalObjects = [];
     this._shopOpen = false;
@@ -382,7 +405,7 @@ export class MainGameScene extends Phaser.Scene {
       this.physics.add.collider(state.enemyFighters, state.player, (player, enemy) => {
         if (this.dashing) return;
         enemy.hit(player);
-      });
+      }, () => !this._spinning); // pass straight through enemies while spinning (still damage them via the melee hitbox)
     });
 
     this.time.delayedCall(delay, () => {
@@ -494,7 +517,6 @@ export class MainGameScene extends Phaser.Scene {
     this.input.on('pointerdown', (pointer) => {
       if (this._modalActive) return;
       if (pointer.button === 2) {
-        if (state.weapon.type === 'sword') this._doSpinAttack();
         return;
       }
       this.shooting = true;
@@ -542,7 +564,12 @@ export class MainGameScene extends Phaser.Scene {
         }
       }
       if (state.weapon.type === 'none') this._doMeleePunch();
-      if (state.weapon.type === 'sword') this._doMeleeSword();
+      if (state.weapon.type === 'sword') {
+        // Attacking mid-dash skips the combo requirement and goes straight into the
+        // spin, whose circular hitbox deflects any bullet touching it 360 degrees around.
+        if (this.dashing) this._doSpinAttack();
+        else this._doMeleeSword();
+      }
     });
 
     state.player.on('animationcomplete', (animation) => {
@@ -551,14 +578,6 @@ export class MainGameScene extends Phaser.Scene {
 
       const isPunch = animation.key === 'left-punch' || animation.key === 'right-punch';
       const isSlash = animation.key === 'left-slash' || animation.key === 'right-slash';
-      const isSpin  = animation.key === 'spin-attack';
-
-      if (isSpin) {
-        this._spinning = false;
-        this.meleeHitbox.body.checkCollision.none = true;
-        setWeapon(state.weapon.type);
-        return;
-      }
 
       if (isPunch || (!isSlash && state.weapon.type !== 'none' && state.weapon.type !== 'sword')) {
         setWeapon(state.weapon.type);
@@ -568,7 +587,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.input.on('pointermove', (pointer) => {
       this.cursorMoving = true;
-      state.player.setRotation(state.angleToPointer + Math.PI / 2);
+      if (!this._spinning) state.player.setRotation(state.angleToPointer + Math.PI / 2);
       const dist = Phaser.Math.Distance.Between(pointer.worldX, pointer.worldY, state.cursor.x, state.cursor.y);
       if (state.frames >= 100) state.cursor.setAlpha((dist - 50) / 70);
     });
@@ -601,14 +620,17 @@ export class MainGameScene extends Phaser.Scene {
   _doMeleeSword() {
     if (this._swordSwingCooldown > 0 || this._swordSpinCooldown > 0 || this._spinning) return;
     unlockWeapon('sword');
+
     const { player, sword_sfx } = state;
-    sword_sfx.play();
-    sword_sfx.setDetune(Phaser.Math.Between(-300, 300));
-    this.meleeHitbox.body.setCircle(70);
-    this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 70, this.meleeHitbox.height / 2 - 70);
     const nextAnim = this.meleeFrame === 0 ? 'left-slash' : 'right-slash';
     const startFrame = this.meleeFrame === 0 ? 23 : 16;
-    if (player.anims.currentAnim?.key !== nextAnim) {
+    // Only skip when that exact slash is still actively playing (spam guard). After a
+    // spin, anims are stopped but currentAnim is stale, so also allow when idle.
+    if (!player.anims.isPlaying || player.anims.currentAnim?.key !== nextAnim) {
+      sword_sfx.play();
+      sword_sfx.setDetune(Phaser.Math.Between(-300, 300));
+      this.meleeHitbox.body.setCircle(70);
+      this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 70, this.meleeHitbox.height / 2 - 70);
       this.meleeHitbox.body.checkCollision.none = false;
       player.setFrame(startFrame);
       player.play(nextAnim, true);
@@ -617,18 +639,33 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
-  _doSpinAttack() {
+  _doSpinAttack(spinLeft = this.meleeFrame === 0) {
     if (this._swordSpinCooldown > 0 || this._spinning) return;
     const { player, sword_sfx } = state;
     sword_sfx.play();
     sword_sfx.setDetune(Phaser.Math.Between(-200, 200));
-    this._spinning = true;
-    this._swordSpinCooldown = 1200;
-    this._swordSwingCooldown = 1200;
+    this._swordSpinCooldown = 100;
+    this._swordSwingCooldown = 100;
     this.meleeHitbox.body.setCircle(110);
     this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 110, this.meleeHitbox.height / 2 - 110);
-    this.meleeHitbox.body.checkCollision.none = false;
-    player.play('spin-attack', true);
+    this.meleeHitbox.body.checkCollision.none = true; // stays off until the rotating frame
+
+    // Slash right before a spin -> left spin, and vice versa (spinLeft is already set that way).
+    this._spinTimeline = spinLeft ? this._leftSpinTimeline : this._rightSpinTimeline;
+
+    // Play a fixed frame timeline; only the rotating frame turns the player (see update()).
+    player.anims.stop();
+    player.setFrame(this._spinTimeline[0].frame);
+    this._spinning = true;
+    this._spinElapsed = 0;
+    // Whirlwind: each multishot rank adds a full extra rotation (and a longer deflect window).
+    this._spinTurns = 1 + state.upgrade.multishot;
+    // left, right combo -> clockwise spin; right, left -> counter-clockwise.
+    this._spinDir = spinLeft ? 1 : -1;
+    this._spinStartRot = player.rotation;
+    // Next slash follows the spin's rotation: clockwise (_spinDir 1) -> right slash (1),
+    // counter-clockwise (_spinDir -1) -> left slash (0).
+    this.meleeFrame = this._spinDir === 1 ? 1 : 0;
   }
 
   _tryDash() {
@@ -672,7 +709,7 @@ export class MainGameScene extends Phaser.Scene {
     state.frames++;
     const { player, legs, cursor } = state;
 
-    if (player.anims.isPlaying) {
+    if (player.anims.isPlaying || this._spinning) {
       this.meleeHitbox.setActive(true);
       this.meleeHitbox.x += 1;
       this.meleeHitbox.y += 1;
@@ -688,6 +725,42 @@ export class MainGameScene extends Phaser.Scene {
 
     if (this._swordSwingCooldown > 0) this._swordSwingCooldown -= delta;
     if (this._swordSpinCooldown > 0) this._swordSpinCooldown -= delta;
+
+    // Spin finisher: walk the frame timeline; only the rotating segment turns the
+    // player one full body turn (and is the only phase whose hitbox damages).
+    if (this._spinning) {
+      this._spinElapsed += delta;
+
+      let acc = 0;
+      let seg = null;
+      let segStart = 0;
+      let segDur = 0;
+      for (const s of this._spinTimeline) {
+        // The rotating segment stretches with Whirlwind so extra turns take extra time.
+        const d = s.rotate ? s.dur * this._spinTurns : s.dur;
+        if (this._spinElapsed < acc + d) { seg = s; segStart = acc; segDur = d; break; }
+        acc += d;
+      }
+
+      if (seg) {
+        player.setFrame(seg.frame);
+        this.meleeHitbox.body.checkCollision.none = !seg.rotate;
+        if (seg.rotate) {
+          const t = (this._spinElapsed - segStart) / segDur;
+          // Ease-out: full speed right away, then gradually slows for the rest of the turn(s).
+          const eased = Phaser.Math.Easing.Quadratic.Out(t);
+          player.setRotation(this._spinStartRot + this._spinDir * Math.PI * 2 * this._spinTurns * eased);
+        }
+      } else {
+        // Timeline finished: hand control back to normal aiming and stay on the
+        // spin's last frame until the next slash (or other action) changes it.
+        this._spinning = false;
+        this.meleeHitbox.body.checkCollision.none = true;
+        this.meleeHitbox.body.setCircle(30);
+        this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 30, this.meleeHitbox.height / 2 - 30);
+        player.setRotation(state.angleToPointer + Math.PI / 2);
+      }
+    }
 
     const pointer = this.input.mousePointer;
     state.mainCamera = this.cameras.main;
@@ -1435,10 +1508,11 @@ export class MainGameScene extends Phaser.Scene {
       state.timeLeft = 0;
       this._triggerGameOver();
     }
-    const t = Math.max(0, Math.ceil(state.timeLeft));
-    const m = Math.floor(t / 60);
-    const s = t % 60;
-    this.timerText.setText(`[ ${m}:${s.toString().padStart(2, '0')} ]`);
+    const totalMs = Math.max(0, Math.floor(state.timeLeft * 1000));
+    const m = Math.floor(totalMs / 60000);
+    const s = Math.floor((totalMs % 60000) / 1000);
+    const ms = totalMs % 1000;
+    this.timerText.setText(`[ ${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')} ]`);
     this.timerText.setColor(state.timeLeft <= 10 ? '#ff4444' : state.timeLeft <= 30 ? '#ffcc44' : '#33ff66');
   }
 

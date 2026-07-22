@@ -1,9 +1,9 @@
 import * as Phaser from 'phaser';
-import { state } from '../state.js';
+import { state, DIFFICULTIES } from '../state.js';
 import { DashLine } from '../entities/DashLine.js';
 import { spawnDashLine } from '../utils/spawners.js';
 import { MAX_VELOCITY } from '../config.js';
-import { isWeaponUnlocked, getLeaderboard } from '../utils/persistence.js';
+import { isWeaponUnlocked, getLeaderboard, getDifficulty, setDifficulty } from '../utils/persistence.js';
 
 const WEAPON_FRAMES = [
   { name: 'PISTOL',        frame: 5,  type: 'pistol'       },
@@ -124,7 +124,23 @@ export class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5).setInteractive()
       .on('pointerdown', () => this._cycleWeapon(1));
 
-    this._startBtn = this.add.text(0, 300, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
+    // ── Difficulty selector ───────────────────────────────────────────
+    state.difficulty = getDifficulty(); // restore the last chosen mode
+    this.add.text(-140, 265, 'MODE:', textStyle()).setOrigin(0.5);
+
+    this._difficultyLabel = this.add.text(60, 265, '', textStyle('#ffcc44')).setOrigin(0.5);
+
+    this.add.text(-240, 265, '<', textStyle())
+      .setOrigin(0.5).setInteractive()
+      .on('pointerdown', () => this._cycleDifficulty(-1));
+
+    this.add.text(220, 265, '>', textStyle())
+      .setOrigin(0.5).setInteractive()
+      .on('pointerdown', () => this._cycleDifficulty(1));
+
+    this._updateDifficultyLabel();
+
+    this._startBtn = this.add.text(0, 350, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
       .setOrigin(0.5)
       .setInteractive()
       .on('pointerdown', () => {
@@ -140,6 +156,17 @@ export class MainMenuScene extends Phaser.Scene {
   _cycleWeapon(dir) {
     this._selectedWeapon = (this._selectedWeapon + dir + WEAPON_FRAMES.length) % WEAPON_FRAMES.length;
     this._updateWeaponLabel();
+  }
+
+  _cycleDifficulty(dir) {
+    state.difficulty = (state.difficulty + dir + DIFFICULTIES.length) % DIFFICULTIES.length;
+    setDifficulty(state.difficulty); // remember the choice like the leaderboard
+    this._updateDifficultyLabel();
+  }
+
+  _updateDifficultyLabel() {
+    const d = DIFFICULTIES[state.difficulty];
+    this._difficultyLabel.setText(`${d.name}  (+${d.perKill}s/kill)`);
   }
 
   _updateWeaponLabel() {

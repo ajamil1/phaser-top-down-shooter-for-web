@@ -1,10 +1,11 @@
-import { state } from '../state.js';
+import { state, DIFFICULTIES } from '../state.js';
 
 // LocalStorage-backed persistence for weapon unlocks and the leaderboard.
 // (The leaderboard will move to a real database later — same API surface.)
 
 const UNLOCK_KEY = 'tds_unlockedWeapons';
 const LEADERBOARD_KEY = 'tds_leaderboard';
+const DIFFICULTY_KEY = 'tds_difficulty';
 
 // Pistol is always available as the free starter.
 const DEFAULT_UNLOCKED = ['pistol'];
@@ -43,6 +44,17 @@ export function unlockWeapon(type) {
   if (unlocked.includes(type)) return;
   unlocked.push(type);
   _write(UNLOCK_KEY, unlocked.filter(t => !DEFAULT_UNLOCKED.includes(t)));
+}
+
+// ── Difficulty ────────────────────────────────────────────────────────────────
+
+export function getDifficulty() {
+  const idx = _read(DIFFICULTY_KEY, 1);
+  return Number.isInteger(idx) && idx >= 0 && idx < DIFFICULTIES.length ? idx : 1;
+}
+
+export function setDifficulty(index) {
+  _write(DIFFICULTY_KEY, index);
 }
 
 // ── Score / leaderboard ─────────────────────────────────────────────────────
