@@ -23,12 +23,28 @@
       "PowerShell(claude mcp list)",
       "PowerShell(claude mcp add --transport http nubo https://mcp.withnubo.com/mcp)",
       "PowerShell(claude mcp add --transport http nubo https://mcp.withnubo.com/mcp --header \"Authorization: Bearer nubo_pat_Uwt3caBdo3HnHXdT9zelRz86I1BpDX6lDLKbcZSW\")",
-      "PowerShell(claude mcp remove nubo)"
+      "PowerShell(claude mcp remove nubo)",
+      "PowerShell(node --check \"public\\\\src\\\\entities\\\\XPOrb.js\")",
+      "PowerShell(node --check \"public\\\\src\\\\scenes\\\\MainGameScene.js\")",
+      "PowerShell(node --check \"public\\\\src\\\\state.js\")",
+      "PowerShell(node --check \"public\\\\src\\\\utils\\\\persistence.js\")",
+      "PowerShell(node --check \"public\\\\src\\\\scenes\\\\MainMenuScene.js\")",
+      "PowerShell(node --check \"public\\\\src\\\\entities\\\\UpgradePickup.js\")",
+      "PowerShell(node \"C:\\\\Users\\\\Zafir\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\b--git-master-general-b-Web-Projects-top-down-shooter-for-web\\\\e67cbc1e-cb5f-415a-8bca-5c044f1dfef0\\\\scratchpad\\\\bench.js\")",
+      "Bash(cd \"b:/git-master/general_b/Web Projects/top-down-shooter-for-web\" && sed -n '/update: function \\(delta\\)/,/^    },/p' node_modules/phaser/src/physics/arcade/World.js | head -60)",
+      "PowerShell(node \"C:\\\\Users\\\\Zafir\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\b--git-master-general-b-Web-Projects-top-down-shooter-for-web\\\\e67cbc1e-cb5f-415a-8bca-5c044f1dfef0\\\\scratchpad\\\\bodies.js\")",
+      "PowerShell(node \"C:\\\\Users\\\\Zafir\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\b--git-master-general-b-Web-Projects-top-down-shooter-for-web\\\\e67cbc1e-cb5f-415a-8bca-5c044f1dfef0\\\\scratchpad\\\\tree.js\")",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(git show *)",
+      "PowerShell(cd \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\"; git status --short -- public/src/assets/weapons.png; Write-Output \"---\"; \\(Get-Item public/src/assets/weapons.png\\) | Select-Object Name, Length, LastWriteTime | Format-Table -AutoSize)",
+      "PowerShell(cd \"b:\\\\git-master\\\\general_b\\\\Web Projects\\\\top-down-shooter-for-web\"; foreach \\($f in @\\(\"public/src/state.js\",\"public/src/utils/combat.js\",\"public/src/utils/spawners.js\",\"public/src/entities/Weapon.js\",\"public/src/entities/EnemyFighter.js\",\"public/src/scenes/MainMenuScene.js\",\"public/src/scenes/MainGameScene.js\"\\)\\) { node --check $f; if \\(-not $?\\) { Write-Output \"FAIL: $f\" } }; Write-Output \"checks done\"; npm run build 2>&1 | Select-Object -Last 4)",
+      "Bash(node -e \"console.log\\(require\\('./node_modules/phaser/package.json'\\).version\\)\")"
     ],
     "additionalDirectories": [
       "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\public\\src3d",
       "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web",
-      "C:\\Users\\Zafir\\.claude\\skills"
+      "C:\\Users\\Zafir\\.claude\\skills",
+      "b:\\git-master\\general_b\\Web Projects\\top-down-shooter-for-web\\node_modules\\phaser\\src\\physics\\arcade"
     ]
   }
 }

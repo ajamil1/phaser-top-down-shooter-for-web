@@ -10,12 +10,16 @@ const BULLET_CLEAR_R = 25;
 // Spawns a burst of arcs along worldAngle from an origin, scaled by the same
 // upgrades the arc gun uses (bulletspeed, damage, accuracy). Shared by the arc
 // weapon and the shield-pistol deflect (including deflecting enemy arcs).
-export function fireArcBurst(worldAngle, originX, originY, shots, lateralSpread = 0, forwardOffset = 50) {
-  const { upgrade, pistol_sfx } = state;
-  const speedBonus = upgrade.bulletspeed * 250;
-  const damage = upgrade.damage;
-  pistol_sfx.play();
-  pistol_sfx.setDetune(Phaser.Math.Between(400, 800));
+export function fireArcBurst(worldAngle, originX, originY, shots, lateralSpread = 0, forwardOffset = 50, enemyBullet = false) {
+  const { upgrade, arc_sfx } = state;
+  // Enemies have no player upgrades — use base values so their arc gun matches the
+  // player's at zero upgrades.
+  const speedBonus = enemyBullet ? 0 : upgrade.bulletspeed * 250;
+  const damage = enemyBullet ? 1 : upgrade.damage;
+  const accuracy = enemyBullet ? 0 : upgrade.accuracy;
+  const reach = MAX_REACH + speedBonus * 0.5; // bullet-speed upgrade extends arc reach
+  arc_sfx.play();
+  arc_sfx.setDetune(Phaser.Math.Between(-100, 100));
   // perpendicular ("horizontal") axis relative to the aim direction
   const perpX = Math.cos(worldAngle + Math.PI / 2);
   const perpY = Math.sin(worldAngle + Math.PI / 2);
@@ -23,13 +27,33 @@ export function fireArcBurst(worldAngle, originX, originY, shots, lateralSpread 
     const lateral = (Math.random() - 0.5) * lateralSpread;
     const spawnX = originX + Math.cos(worldAngle) * forwardOffset + perpX * lateral;
     const spawnY = originY + Math.sin(worldAngle) * forwardOffset + perpY * lateral;
-    const spread = (Math.random() - 0.5) * Math.max(0.05, 0.6 - upgrade.accuracy * 0.05);
-    state.arcs.push(new Arc(spawnX, spawnY, worldAngle + spread, 7000 + speedBonus, 0.8 + damage));
+    const spread = (Math.random() - 0.5) * Math.max(0.05, 0.6 - accuracy * 0.05);
+    state.arcs.push(new Arc(spawnX, spawnY, worldAngle + spread, 7000 + speedBonus, 0.8 + damage, 0, enemyBullet, reach));
+  }
+}
+
+// Spawns a full 360° ring of arcs radiating out from a point. Used by the shield
+// pistol's projectile when it impacts something.
+export function fireArcRing(originX, originY, count = 12, enemyBullet = false) {
+  const { upgrade } = state;
+  const speedBonus = enemyBullet ? 0 : (upgrade?.bulletspeed ?? 0) * 250;
+  const damage = enemyBullet ? 1 : (upgrade?.damage ?? 1);
+  const reach = MAX_REACH + speedBonus * 0.5; // bullet-speed upgrade extends arc reach
+  const offset = 22; // start each arc slightly out so they don't all overlap the origin
+  if (state.arc_sfx) {
+    state.arc_sfx.play();
+    state.arc_sfx.setDetune(Phaser.Math.Between(-100, 100));
+  }
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2;
+    const sx = originX + Math.cos(angle) * offset;
+    const sy = originY + Math.sin(angle) * offset;
+    state.arcs.push(new Arc(sx, sy, angle, 7000 + speedBonus, 0.8 + damage, 0, enemyBullet, reach));
   }
 }
 
 export class Arc {
-  constructor(x, y, rotation, velocity, damage, depth = 0, enemyBullet = false) {
+  constructor(x, y, rotation, velocity, damage, depth = 0, enemyBullet = false, maxReach = MAX_REACH) {
     this.kinks = [{ x, y }];
     this.tipX = x;
     this.tipY = y;
@@ -38,6 +62,7 @@ export class Arc {
     this.damage = damage;
     this.depth = depth;
     this.enemyBullet = enemyBullet;
+    this.maxReach = maxReach;
     this.active = true;
     this.alpha = 1;
     this._timer = 0;
@@ -80,7 +105,7 @@ export class Arc {
     const newY = this.tipY + Math.sin(this.rotation) * speed;
     this._totalLength += speed;
 
-    if (this._totalLength > MAX_REACH) {
+    if (this._totalLength > this.maxReach) {
       this.active = false;
       return;
     }
@@ -125,8 +150,9 @@ export class Arc {
       }
     }
 
-    // Any arc (player or enemy) damages enemies it passes over.
-    if (state.enemyFighters) {
+    // Player arcs damage enemies they pass over; enemy arcs only threaten the player
+    // (no friendly fire between enemies).
+    if (state.enemyFighters && !this.enemyBullet) {
       for (const e of state.enemyFighters.getChildren()) {
         if (!e.active || e.death || this._hitEnemies.has(e)) continue;
         const dx = newX - e.x;
@@ -189,7 +215,7 @@ export class Arc {
           this.tipX, this.tipY,
           this.rotation + deflection / 2,
           this.velocity, this.damage,
-          this.depth + 1, this.enemyBullet
+          this.depth + 1, this.enemyBullet, this.maxReach
         );
         this.children.push(child);
         this.rotation -= deflection / 2;

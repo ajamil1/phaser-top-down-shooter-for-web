@@ -1,5 +1,5 @@
 import * as Phaser from 'phaser';
-import { state } from '../state.js';
+import { state, refreshActiveUpgrades } from '../state.js';
 
 const TYPES = ['damage', 'bulletspeed', 'accuracy', 'ammo'];
 const TINTS = { damage: 0xff4444, bulletspeed: 0x44aaff, accuracy: 0xffaa00, ammo: 0x44ff88 };
@@ -36,12 +36,15 @@ export class UpgradePickup extends Phaser.Physics.Arcade.Sprite {
   }
 
   apply() {
+    // Write to the real upgrade block — state.upgrade can be a temporary
+    // per-weapon view that gets rebuilt (and discarded) on weapon swaps.
     switch (this.upgradeType) {
-      case 'damage':      state.upgrade.damage += 0.5; break;
-      case 'bulletspeed': state.upgrade.bulletspeed += 500; break;
-      case 'accuracy':    state.upgrade.spread += 0.005; break;
+      case 'damage':      state.globalUpgrades.damage += 0.5; break;
+      case 'bulletspeed': state.globalUpgrades.bulletspeed += 500; break;
+      case 'accuracy':    state.globalUpgrades.spread += 0.005; break;
       case 'ammo':        state.weapon.ammo += 10; break;
     }
+    refreshActiveUpgrades();
     this.setActive(false);
     this.setVisible(false);
   }

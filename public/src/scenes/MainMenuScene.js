@@ -1,18 +1,19 @@
 import * as Phaser from 'phaser';
-import { state, DIFFICULTIES } from '../state.js';
+import { state, DIFFICULTIES, MEDAL_COLORS } from '../state.js';
 import { DashLine } from '../entities/DashLine.js';
 import { spawnDashLine } from '../utils/spawners.js';
 import { MAX_VELOCITY } from '../config.js';
-import { isWeaponUnlocked, getLeaderboard, getDifficulty, setDifficulty } from '../utils/persistence.js';
+import { isWeaponUnlocked, getLeaderboard, getDifficulty, setDifficulty, isDifficultyUnlocked, getMedals, getMedalThresholds, getUnlockAll, setUnlockAll } from '../utils/persistence.js';
 
 const WEAPON_FRAMES = [
   { name: 'PISTOL',        frame: 5,  type: 'pistol'       },
   { name: 'SHOTGUN',       frame: 7,  type: 'shotgun'      },
-  { name: 'RIFLE',         frame: 6,  type: 'ar'           },
+  { name: 'ASSAULT RIFLE', frame: 6,  type: 'ar'           },
   { name: 'SWORD',         frame: 15, type: 'sword'        },
   { name: 'DUAL PISTOLS',  frame: 8,  type: 'dualPistol'   },
   { name: 'SHIELD PISTOL', frame: 26, type: 'shieldPistol' },
   { name: 'ARC',           frame: 29, type: 'arc'          },
+  { name: 'RIFLE',         frame: 30, type: 'boltRifle'    },
 ];
 
 export class MainMenuScene extends Phaser.Scene {
@@ -29,6 +30,8 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.audio('shotgun_sfx', '/src/assets/shotgun_sfx.mp3');
     this.load.audio('pistol_sfx', '/src/assets/pistol_sfx.mp3');
     this.load.audio('rifle_sfx', '/src/assets/rifle_sfx.mp3');
+    this.load.audio('arc_sfx', '/src/assets/arc_sfx.mp3');
+    this.load.audio('bolt_rifle_sfx', '/src/assets/bolt_rifle_sfx.mp3');
     this.load.audio('sword_sfx', '/src/assets/sword_sfx.mp3');
     this.load.audio('single_reload_sfx', '/src/assets/single_reload_sfx.mp3');
     this.load.audio('reload_mag_sfx', '/src/assets/reload_mag_sfx.mp3');
@@ -46,6 +49,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.load.image('basicEnemy', '/src/assets/basic-enemy.png');
     this.load.image('enemyFighter', '/src/assets/enemy-fighter.png');
     this.load.spritesheet('weapon', '/src/assets/weapons.png', { frameWidth: 63, frameHeight: 63, margin: 0, spacing: 0 });
+    this.load.spritesheet('muzzleFlash', '/src/assets/muzzle-flash.png', { frameWidth: 10, frameHeight: 10, margin: 0, spacing: 0 });
     this.load.spritesheet('spark', '/src/assets/enemy-sparks.png', { frameWidth: 5, frameHeight: 5, margin: 0, spacing: 0 });
     this.load.image('pistol', '/src/assets/pistol.png');
     this.load.image('cursor', '/src/assets/cursor.png');
@@ -55,6 +59,8 @@ export class MainMenuScene extends Phaser.Scene {
     state.pistol_sfx = this.sound.add('pistol_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.shotgun_sfx = this.sound.add('shotgun_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.rifle_sfx = this.sound.add('rifle_sfx', { loop: false, volume: 0.5, allowMultiple: true });
+    state.arc_sfx = this.sound.add('arc_sfx', { loop: false, volume: 0.5, allowMultiple: true });
+    state.bolt_rifle_sfx = this.sound.add('bolt_rifle_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.sword_sfx = this.sound.add('sword_sfx', { loop: false, volume: 0.5, allowMultiple: true });
     state.single_reload_sfx = this.sound.add('single_reload_sfx', { loop: false, volume: 0.4, allowMultiple: true });
     state.reload_mag_sfx = this.sound.add('reload_mag_sfx', { loop: false, volume: 0.5, allowMultiple: false });
@@ -101,7 +107,10 @@ export class MainMenuScene extends Phaser.Scene {
     this.add.text(0, -200, 'top-down-shooter-v2', textStyle())
       .setOrigin(0.5)
       .setInteractive()
-      .on('pointerdown', () => this.scene.start('MainGameScene'));
+      .on('pointerdown', () => {
+        if (!isDifficultyUnlocked(state.difficulty)) return;
+        this.scene.start('MainGameScene');
+      });
 
     this.add.text(-100, -100, 'MOVEMENT:', textStyle()).setOrigin(0.5);
     this.add.text(100, -100, '[W]\n[A][S][D]', textStyle('#00ff2aff')).setOrigin(0.5);
@@ -138,6 +147,11 @@ export class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5).setInteractive()
       .on('pointerdown', () => this._cycleDifficulty(1));
 
+    // Medal / unlock status for the highlighted difficulty.
+    this._medalLabel = this.add.text(0, 305, '', {
+      fontSize: '17px', fontFamily: 'monospace', fill: '#888888', align: 'center',
+    }).setOrigin(0.5);
+
     this._updateDifficultyLabel();
 
     this._startBtn = this.add.text(0, 350, 'START', { ...textStyle(), backgroundColor: '#310000ff' })
@@ -145,12 +159,33 @@ export class MainMenuScene extends Phaser.Scene {
       .setInteractive()
       .on('pointerdown', () => {
         if (!isWeaponUnlocked(WEAPON_FRAMES[this._selectedWeapon].type)) return;
+        if (!isDifficultyUnlocked(state.difficulty)) return;
         state.starterWeapon = this._selectedWeapon;
         this.scene.start('MainGameScene');
       });
 
+    // Testing toggle: unlock every weapon (persists in localStorage).
+    this._unlockAllBtn = this.add.text(0, 415, '', {
+      fontSize: '16px', fontFamily: 'monospace', backgroundColor: '#111111', padding: { x: 8, y: 4 },
+    })
+      .setOrigin(0.5)
+      .setInteractive()
+      .on('pointerdown', () => {
+        setUnlockAll(!getUnlockAll());
+        this._updateUnlockAllBtn();
+        this._updateWeaponLabel(); // refresh lock state + START button
+      });
+    this._updateUnlockAllBtn();
+
     this._updateWeaponLabel();
     this._buildLeaderboard();
+  }
+
+  _updateUnlockAllBtn() {
+    const on = getUnlockAll();
+    this._unlockAllBtn
+      .setText(`UNLOCK ALL (test): ${on ? 'ON' : 'OFF'}`)
+      .setColor(on ? '#00ff88' : '#888888');
   }
 
   _cycleWeapon(dir) {
@@ -160,13 +195,34 @@ export class MainMenuScene extends Phaser.Scene {
 
   _cycleDifficulty(dir) {
     state.difficulty = (state.difficulty + dir + DIFFICULTIES.length) % DIFFICULTIES.length;
-    setDifficulty(state.difficulty); // remember the choice like the leaderboard
+    // Locked modes can be browsed but never persisted as the active choice.
+    if (isDifficultyUnlocked(state.difficulty)) setDifficulty(state.difficulty);
     this._updateDifficultyLabel();
   }
 
   _updateDifficultyLabel() {
     const d = DIFFICULTIES[state.difficulty];
-    this._difficultyLabel.setText(`${d.name}  (+${d.perKill}s/kill)`);
+    const unlocked = isDifficultyUnlocked(state.difficulty);
+    this._difficultyLabel
+      .setText(unlocked ? `${d.name}  (+${d.perKill}s/kill · ×${d.scoreMult} score)` : `${d.name}  [LOCKED]`)
+      .setColor(unlocked ? '#ffcc44' : '#ff4444');
+
+    const t = getMedalThresholds(state.difficulty);
+    const best = getMedals()[state.difficulty];
+    if (!unlocked) {
+      this._medalLabel
+        .setText(`earn GOLD on ${DIFFICULTIES[state.difficulty - 1].name} to unlock`)
+        .setColor('#ff8888');
+    } else if (best) {
+      this._medalLabel
+        .setText(`best medal: ${best.toUpperCase()}   (gold at ${t.gold})`)
+        .setColor(MEDAL_COLORS[best]);
+    } else {
+      this._medalLabel
+        .setText(`medals — bronze ${t.bronze} · silver ${t.silver} · gold ${t.gold}`)
+        .setColor('#888888');
+    }
+    this._updateStartButton();
   }
 
   _updateWeaponLabel() {
@@ -174,10 +230,20 @@ export class MainMenuScene extends Phaser.Scene {
     const unlocked = isWeaponUnlocked(w.type);
     this._weaponLabel.setText(unlocked ? w.name : `${w.name}  [LOCKED]`)
       .setColor(unlocked ? '#00ff2aff' : '#ff4444');
-    if (this._startBtn) {
-      this._startBtn.setAlpha(unlocked ? 1 : 0.35);
-      this._startBtn.setText(unlocked ? 'START' : 'LOCKED — find & use it in a run');
-    }
+    this._updateStartButton();
+  }
+
+  // START is gated on both the weapon unlock and the difficulty unlock.
+  _updateStartButton() {
+    if (!this._startBtn) return;
+    const weaponOk = isWeaponUnlocked(WEAPON_FRAMES[this._selectedWeapon].type);
+    const diffOk = isDifficultyUnlocked(state.difficulty);
+    this._startBtn.setAlpha(weaponOk && diffOk ? 1 : 0.35);
+    this._startBtn.setText(
+      !weaponOk ? 'LOCKED — find & use it in a run'
+      : !diffOk ? `LOCKED — earn GOLD on ${DIFFICULTIES[state.difficulty - 1].name}`
+      : 'START'
+    );
   }
 
   _buildLeaderboard() {

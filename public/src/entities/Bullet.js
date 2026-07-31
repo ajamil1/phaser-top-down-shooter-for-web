@@ -1,5 +1,6 @@
 import * as Phaser from 'phaser';
 import { state } from '../state.js';
+import { fireArcRing } from './Arc.js';
 
 export class Bullet extends Phaser.Physics.Arcade.Sprite {
   constructor(scene, x, y) {
@@ -20,7 +21,55 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
     this.arcMode = false;
     this._arcTimer = 0;
     this._arcDepth = 0;
+    this.arcBurst = false;   // shield-pistol round: detonates into a 360° arc ring on impact
+    this._detonated = false;
+    this.fragSplit = false;  // rifle round: splits into fragments on the first enemy hit
+    this._split = false;
     this.setScale(4, 1);
+  }
+
+  // Rifle fragment: a slower, weaker bullet travelling at a fixed world angle, styled
+  // like a sword-deflected bullet. Doesn't split again, pierce, or bounce.
+  fireFrag(angle, x, y, velocity, damage) {
+    this.reflect = false;
+    this.arcMode = false;
+    this.arcBurst = false;
+    this._detonated = false;
+    this.fragSplit = false;
+    this._split = true;
+    this.bounces = 0;
+    this.pierceLeft = 0;
+    this.bounceCooldown = 0;
+    this.enemyBullet = false;
+    this.body.setCircle(2);
+    this.body.setOffset(this.width / 2 - 2, this.height / 2 - 2);
+    this.scaleX = 3.5;  // same size as the parent round (deflected-bullet look)
+    this.scaleY = 0.5;
+    this.lifespan = state.frames + 10;
+    this.velocity = velocity;
+    this.damage = damage;
+    this.body.checkCollision.none = false;
+    this.setTint(0xffff69); // deflected-bullet yellow
+    this.setActive(true);
+    this.setVisible(true);
+    this.setRotation(angle);
+    this.setPosition(x, y);
+    this.body.velocity.x = Math.cos(angle) * velocity;
+    this.body.velocity.y = Math.sin(angle) * velocity;
+  }
+
+  // Detonate an arc-burst round: spawn a radial ring of arcs at the impact point.
+  // deactivate=false leaves the sprite alive so a normal hit-handler can still
+  // read its damage and retire it (avoids double-processing).
+  detonate(deactivate = true) {
+    if (this._detonated) return;
+    this._detonated = true;
+    fireArcRing(this.x, this.y, 12, this.enemyBullet);
+    if (this.body) this.body.checkCollision.none = true;
+    if (deactivate) {
+      this.setActive(false);
+      this.setVisible(false);
+    }
   }
 
   fire(rotation, x, y, range_min, range_max, spread_min, spread_max, spawn_offset, enemyBullet, damage = 1) {
@@ -35,6 +84,10 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
 
     this.reflect = false;
     this.arcMode = false;
+    this.arcBurst = false;
+    this._detonated = false;
+    this.fragSplit = false;
+    this._split = false;
     this._arcTimer = 0;
     this._arcDepth = 0;
     this.bounces = enemyBullet ? 0 : state.upgrade.ricochet;
@@ -98,6 +151,10 @@ export class Bullet extends Phaser.Physics.Arcade.Sprite {
   fireArc(rotation, x, y, velocity, damage, depth = 0, enemyBullet = false) {
     this.reflect = false;
     this.arcMode = true;
+    this.arcBurst = false;
+    this._detonated = false;
+    this.fragSplit = false;
+    this._split = false;
     this._arcTimer = 0;
     this._arcDepth = depth;
     this.bounces = 0;

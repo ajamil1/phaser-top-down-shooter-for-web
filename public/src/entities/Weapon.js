@@ -50,6 +50,11 @@ export class Weapon extends Phaser.Physics.Arcade.Sprite {
       this.setVisible(false);
       this.overlay.setVisible(false);
       this._setupCustomIcon('ARC', 0x001a22, 0x44eeff);
+    } else if (this.id === 7) {
+      // Bolt rifle — new dedicated icon (frame 4 of weapons.png).
+      this.setVisible(true);
+      this.setFrame(4);
+      this.overlay.setVisible(false);
     } else if (this.id >= 0 && this.id <= 3) {
       this.setVisible(true);
       this.setFrame(frames[this.id]);

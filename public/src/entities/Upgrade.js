@@ -18,7 +18,7 @@ export const UPGRADE_TYPES = [
   'multishot',
   // Ultimates — appear once (rare)
   'pierce',
-  'binaryTrigger',
+  'fullAuto',
   'doubleBarrel',
   'windUp',
 ];
@@ -34,7 +34,7 @@ export const UPGRADE_DEFS = {
   bulletspeed: { rgb: [255, 80,  160], letter: 'S' },
   damage:        { rgb: [255, 50,  50],  letter: 'D' },
   pierce:        { rgb: [100, 255, 200], letter: 'P' },
-  binaryTrigger: { rgb: [255, 215, 0],  letter: 'T' },
+  fullAuto:      { rgb: [255, 215, 0],  letter: 'F' },
   doubleBarrel:   { rgb: [255, 120, 0],  letter: 'B' },
   windUp:        { rgb: [180, 80,  255], letter: 'W' },
 };

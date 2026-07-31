@@ -64,6 +64,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this._shieldTimer = 0;
     this._shieldReactionTimer = 0;
     this._shieldUsed = false;
+    this._arcWindup = 0;    // arc gun spins up while engaging (0 → 1)
+    this._arcShotAccum = 0; // ms accumulated toward the next windup-scaled shot
 
     const angleCount = 7;
     for (let i = 0; i < angleCount; i++) {
@@ -153,11 +155,35 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       loop: true,
     });
 
+    // Bolt rifle — slow, deliberate single shots (bolt-action cadence).
+    scene.time.addEvent({
+      delay: 1600,
+      callback: () => {
+        if (!this.loop || this.weapon !== 17 || this.death || this.distance > 900) return;
+        enemyShoot(this, 17, this.rotation, this.pistol_sfx);
+      },
+      loop: true,
+    });
+
+    // Arc gun: cadence winds up from slow → fast (240ms → 80ms) while the enemy
+    // keeps the player in range, then spins back down. Mirrors the player arc gun.
     scene.time.addEvent({
       delay: 80,
       callback: () => {
-        if (!this.loop || this.weapon !== 16 || this.death || this.distance > 400) return;
-        enemyShoot(this, 16, this.rotation, this.pistol_sfx);
+        const TICK = 80;
+        const engaging = this.loop && this.weapon === 16 && !this.death && this.distance <= 400;
+        if (!engaging) {
+          this._arcWindup = Math.max(0, this._arcWindup - TICK / 800);
+          this._arcShotAccum = 0;
+          return;
+        }
+        this._arcWindup = Math.min(1, this._arcWindup + TICK / 3000);
+        const interval = 240 * Math.pow(1 / 3, this._arcWindup); // 240ms → 80ms
+        this._arcShotAccum += TICK;
+        if (this._arcShotAccum >= interval) {
+          this._arcShotAccum = 0;
+          enemyShoot(this, 16, this.rotation, this.pistol_sfx);
+        }
       },
       loop: true,
     });
@@ -360,6 +386,7 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
       case 14: this.setFrame(8); break;
       case 15: this.setFrame(27); break;
       case 16: this.setFrame(29); break;
+      case 17: this.setFrame(30); break;
       case 2:  this.setFrame(7); break;
       case 3:  this.setFrame(6); break;
       default:
@@ -436,6 +463,8 @@ export class EnemyFighter extends Phaser.Physics.Arcade.Sprite {
     this._shieldTimer = 0;
     this._shieldReactionTimer = 0;
     this._shieldUsed = false;
+    this._arcWindup = 0;
+    this._arcShotAccum = 0;
     this._stuckTime = 0;
     this._stuckX = this.x;
     this._stuckY = this.y;

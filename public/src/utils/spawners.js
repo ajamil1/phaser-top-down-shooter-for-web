@@ -14,14 +14,14 @@ const STAGE_POOLS = [
   [1, 1, 5, 6, 0, 11, 12],
   // 2 — pistols, fists, swords, some dual pistols
   [1, 1, 1, 5, 6, 0, 11, 12, 14],
-  // 3 — dual pistols, some pistols, some swords, a few assault rifles
-  [14, 14, 14, 1, 1, 5, 6, 3],
-  // 4 — assault rifles, shotguns, pistols, swords
-  [3, 3, 2, 2, 1, 1, 5, 6],
+  // 3 — dual pistols, some pistols, some swords, a few assault + bolt rifles
+  [14, 14, 14, 1, 1, 5, 6, 3, 17],
+  // 4 — assault rifles, shotguns, pistols, swords, bolt rifles
+  [3, 3, 2, 2, 1, 1, 5, 6, 17],
   // 5 — all of them + a few shield pistols
-  [1, 1, 5, 6, 2, 3, 14, 14, 15, 0],
+  [1, 1, 5, 6, 2, 3, 17, 14, 14, 15, 0],
   // 6 — everything, including the arc gun
-  [1, 5, 6, 2, 3, 14, 15, 16, 0, 11],
+  [1, 5, 6, 2, 3, 17, 14, 15, 16, 0, 11],
 ];
 
 // Chance an enemy drops its weapon on death (not guaranteed).
@@ -49,6 +49,7 @@ function enemyWeaponToCollectible(enemyWeaponId) {
   if (enemyWeaponId === 14) return 4; // akimbo pistols
   if (enemyWeaponId === 15) return 5; // shield + pistol
   if (enemyWeaponId === 16) return 6; // arc
+  if (enemyWeaponId === 17) return 7; // bolt rifle
   return null; // unarmed / punch-only
 }
 

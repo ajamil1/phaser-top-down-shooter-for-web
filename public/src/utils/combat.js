@@ -5,6 +5,41 @@ import { unlockWeapon } from './persistence.js';
 
 export { fireArcBurst };
 
+// Per-weapon muzzle-flash offset from the shooter, in the aim frame:
+//   forward = distance along the aim, lateral = perpendicular (aim's right = +).
+// Tune live in-game with the muzzle tuner (press M), then paste the printed values.
+export const MUZZLE_OFFSETS = {
+  pistol:       { forward: 96, lateral: 6 },
+  dualPistol:   { forward: 84, lateral: 10 },               // ±lateral: mirrors to the firing pistol
+  shieldPistol: { forward: 82, lateral: 8, forwardUp: 64 }, // forwardUp used while the shield is raised
+  shotgun:      { forward: 84, lateral: 5 },
+  ar:           { forward: 72, lateral: 7 },
+  boltRifle:    { forward: 85, lateral: 6 },
+};
+const DEFAULT_MUZZLE = { forward: 90, lateral: 0 };
+
+// Enemy weapon IDs → weapon types, so enemies reuse the same muzzle offsets.
+const ENEMY_WEAPON_TYPE = { 1: 'pistol', 2: 'shotgun', 3: 'ar', 14: 'dualPistol', 15: 'shieldPistol', 17: 'boltRifle' };
+
+function spawnMuzzleFlash(shooter, aimAngle, weaponType) {
+  const { muzzleFlashes } = state;
+  if (!muzzleFlashes || !shooter) return;
+  const base = MUZZLE_OFFSETS[weaponType] ?? DEFAULT_MUZZLE;
+  let forward = base.forward;
+  let lateral = base.lateral;
+  if (weaponType === 'dualPistol') {
+    // Flash comes from whichever pistol just fired (enemy tracks its own side).
+    const side = shooter.dualPistolSide ?? (state.dualPistolFrame === 8 ? -1 : 1);
+    lateral = Math.abs(base.lateral) * side;
+  } else if (weaponType === 'shieldPistol' && shooter === state.player && state.shieldUp && base.forwardUp != null) {
+    forward = base.forwardUp; // gun sits closer to the body while the shield is raised
+  }
+  const perp = aimAngle + Math.PI / 2;
+  const x = shooter.x + Math.cos(aimAngle) * forward + Math.cos(perp) * lateral;
+  const y = shooter.y + Math.sin(aimAngle) * forward + Math.sin(perp) * lateral;
+  muzzleFlashes.get(x, y)?.spawn(x, y, aimAngle, shooter);
+}
+
 export function getFacingPosition(player, distance) {
   return {
     x: player.x + Math.cos(state.angleToPointer) * distance,
@@ -20,6 +55,7 @@ export function setWeapon(type) {
     case 'shieldPistol': state.shieldUp = true; player.setFrame(26); break;
     case 'ar':      player.setFrame(6); break;
     case 'arc':     player.setFrame(29); break;
+    case 'boltRifle': player.setFrame(30); break;
     case 'shotgun': player.setFrame(7); break;
     case 'sword':   player.setFrame(15); break;
     default:        player.setFrame(0); break;
@@ -31,9 +67,13 @@ export function angleOffset(s) {
   return (s % 2 === 1 ? 1 : -1) * Math.ceil(s / 2) * 0.1;
 }
 
-export function shootBullet(rotation) {
-  const { weapon, upgrade, bullets, player, mainCamera, pistol_sfx, shotgun_sfx, rifle_sfx } = state;
+export function shootBullet(rotation, firstShot = false) {
+  const { weapon, upgrade, bullets, player, mainCamera, pistol_sfx, shotgun_sfx, rifle_sfx, bolt_rifle_sfx } = state;
   unlockWeapon(weapon.type); // using a weapon in a run unlocks it as a starter
+  // Muzzle flash on any gun that's actually firing a bullet (not the arc gun / melee).
+  if (weapon.type !== 'arc' && weapon.type !== 'sword' && weapon.type !== 'none' && weapon.ammo > 0) {
+    spawnMuzzleFlash(player, rotation - Math.PI / 2, weapon.type);
+  }
   const detune = Phaser.Math.Between(-100, 100);
   const speedBonus = upgrade.bulletspeed * 250;
   const spreadMod = upgrade.multishot * 0.015 - upgrade.accuracy * 0.015;
@@ -55,8 +95,11 @@ export function shootBullet(rotation) {
         for (let s = 0; s < shots; s++) {
           const bullet = bullets.get(spawnX, spawnY);
           if (!bullet) break;
-          bullet.fire(rotation, spawnX, spawnY, 5500 + speedBonus, 6000 + speedBonus, 0.02, spread, 100, false, damage + 3);
+          // Slow, heavy red round that detonates into a 360° ring of arcs on impact.
+          bullet.fire(rotation, spawnX, spawnY, 2600 + speedBonus, 3000 + speedBonus, 0.02, spread, 100, false, damage + 3);
           bullet.scaleY = 1;
+          bullet.arcBurst = true;
+          bullet.setTint(0xff003c); // matches the arc colour
         }
         mainCamera.shake(100, 0.002);
         if (!freeShot) weapon.ammo -= shots;
@@ -68,10 +111,12 @@ export function shootBullet(rotation) {
         const shots = Math.min(1 + extraShots, weapon.ammo);
         pistol_sfx.play();
         pistol_sfx.setDetune(detune);
+        // Full Auto halves the pistol's per-shot damage.
+        const pistolDmg = upgrade.fullAuto > 0 ? (damage + 1) * 0.5 : damage + 1;
         for (let s = 0; s < shots; s++) {
           const bullet = bullets.get(player.x, player.y);
           if (!bullet) break;
-          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, Math.max(0.02, 0.07 + spreadMod), 100, false, damage + 1);
+          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, Math.max(0.02, 0.07 + spreadMod), 100, false, pistolDmg);
         }
         mainCamera.shake(100, 0.002);
         if (!freeShot) weapon.ammo -= shots;
@@ -143,6 +188,26 @@ export function shootBullet(rotation) {
       }
       break;
 
+    case 'boltRifle':
+      if (weapon.ammo > 0) {
+        // Fast, heavy round. Inherent +1 pierce.
+        bolt_rifle_sfx.play();
+        bolt_rifle_sfx.setDetune(Phaser.Math.Between(-80, 80));
+        const spawnX = player.x + Math.cos(rotation) * 10;
+        const spawnY = player.y + Math.sin(rotation) * 10;
+        const bullet = bullets.get(spawnX, spawnY);
+        if (bullet) {
+          // Assault-rifle accuracy, but the first shot of a trigger pull is 80% tighter.
+          const normalSpread = Math.max(0.01, 0.09 + spreadMod);
+          const spread = firstShot ? normalSpread * 0.2 : normalSpread;
+          bullet.fire(rotation, spawnX, spawnY, 6000 + speedBonus, 6800 + speedBonus, 0, spread, 100, false, damage + 4);
+          bullet.fragSplit = true; // splits into 5 fragments on the first enemy hit
+        }
+        mainCamera.shake(50, 0.003); // same as the assault rifle
+        if (!freeShot) weapon.ammo -= 1;
+      }
+      break;
+
     default:
       break;
   }
@@ -153,34 +218,36 @@ export function getSwordDamage() {
   // Every upgrade the player owns adds to sword damage, regardless of type.
   const otherUpgrades = u.bulletspeed + u.pierce + u.multishot + u.ricochet
     + u.ammoEfficiency + u.firerateBonus + u.accuracy
-    + u.binaryTrigger + u.doubleBarrel + u.windUp
+    + u.fullAuto + u.doubleBarrel + u.windUp
     + u.reloadZone + Math.floor(u.ammoBonus / 3);
   return u.damage + otherUpgrades;
 }
 
 export function enemyShoot(enemy, weaponId, rotation, sound) {
-  const { bullets, pistol_sfx, shotgun_sfx, rifle_sfx, player } = state;
+  const { bullets, pistol_sfx, shotgun_sfx, rifle_sfx, arc_sfx, bolt_rifle_sfx, player } = state;
   const detune = Phaser.Math.Between(-100, 100);
+  if (weaponId !== 16) spawnMuzzleFlash(enemy, rotation - Math.PI / 2, ENEMY_WEAPON_TYPE[weaponId]); // not the arc gun
+
+
 
   switch (weaponId) {
     case 16: {
-      sound.play();
-      pistol_sfx.setDetune(detune + 600);
-      const arcAngle = rotation + -Math.PI / 2;
-      const spawnX = enemy.x + Math.cos(arcAngle) * 50;
-      const spawnY = enemy.y + Math.sin(arcAngle) * 50;
-      state.arcs.push(new Arc(spawnX, spawnY, arcAngle, 7000, 0.15, 0, true));
+      // Same arc burst as the player's arc gun, but as enemy arcs.
+      fireArcBurst(rotation + -Math.PI / 2, enemy.x, enemy.y, 1, 0, 50, true);
       break;
     }
     case 15: {
+      // Same slow, red arc-burst round the player's shield pistol fires (nova on impact).
       sound.play();
       pistol_sfx.setDetune(detune);
       const spawnX = enemy.x + Math.cos(rotation) * 8;
       const spawnY = enemy.y + Math.sin(rotation) * 8;
       const bullet = bullets.get(spawnX, spawnY);
       if (bullet) {
-        bullet.fire(rotation, spawnX, spawnY, 5500, 6000, 0.02, 0.02, 100, true, 4);
+        bullet.fire(rotation, spawnX, spawnY, 2600, 3000, 0.02, 0.02, 100, true, 4);
         bullet.scaleY = 1;
+        bullet.arcBurst = true;
+        bullet.setTint(0xff003c);
       }
       break;
     }
@@ -213,6 +280,12 @@ export function enemyShoot(enemy, weaponId, rotation, sound) {
       sound.play();
       rifle_sfx.setDetune(detune);
       bullets.get(player.x, player.y)?.fire(rotation, enemy.x, enemy.y, 5000, 5500, 0.07, 0.09, 80, true);
+      break;
+
+    case 17: // bolt rifle — fast heavy round
+      bolt_rifle_sfx.play();
+      bolt_rifle_sfx.setDetune(detune);
+      bullets.get(player.x, player.y)?.fire(rotation, enemy.x, enemy.y, 5500, 6000, 0.03, 0.05, 100, true, 3);
       break;
 
     default:

@@ -18,21 +18,42 @@ export function makeUpgradeBlock() {
     ricochet: 0,
     ammoEfficiency: 0,
     pierce: 0,
-    binaryTrigger: 0,
+    fullAuto: 0,
     doubleBarrel: 0,
     windUp: 0,
   };
 }
 
-export const WEAPON_TYPES = ['none', 'pistol', 'dualPistol', 'shieldPistol', 'shotgun', 'ar', 'arc', 'sword'];
+export const WEAPON_TYPES = ['none', 'pistol', 'dualPistol', 'shieldPistol', 'shotgun', 'ar', 'arc', 'boltRifle', 'sword'];
+
+// Display names shown in the HUD / menu (internal type keys stay unchanged).
+export const WEAPON_LABELS = {
+  none: 'FISTS',
+  pistol: 'PISTOL',
+  dualPistol: 'DUAL PISTOLS',
+  shieldPistol: 'SHIELD PISTOL',
+  shotgun: 'SHOTGUN',
+  ar: 'ASSAULT RIFLE',
+  arc: 'ARC',
+  boltRifle: 'RIFLE',
+  sword: 'SWORD',
+};
 
 // Difficulty scales how many seconds each kill refunds. state.difficulty indexes this.
+// scoreMult: harder modes multiply the final score, so the same performance ranks
+//   higher on the shared leaderboard.
+// medals: BASE thresholds tuned against the *raw* (pre-multiplier) score. The
+//   effective medal thresholds are these × scoreMult, so the raw performance a
+//   medal takes stays constant while the displayed numbers track the scaled score.
+//   Earning GOLD on a difficulty unlocks the next one (EASY is always unlocked).
 export const DIFFICULTIES = [
-  { name: 'EASY',   perKill: 1 },
-  { name: 'NORMAL', perKill: 0.5 },
-  { name: 'HARD',   perKill: 0.25 },
-  { name: 'HARDER', perKill: 0.1 },
+  { name: 'EASY',   perKill: 1,    scoreMult: 1,   medals: { bronze: 3000, silver: 6000, gold: 10000 } },
+  { name: 'NORMAL', perKill: 0.5,  scoreMult: 1.5, medals: { bronze: 2500, silver: 5000, gold: 8000  } },
+  { name: 'HARD',   perKill: 0.25, scoreMult: 2,   medals: { bronze: 2000, silver: 4000, gold: 6500  } },
+  { name: 'HARDER', perKill: 0.1,  scoreMult: 3,   medals: { bronze: 1500, silver: 3000, gold: 5000  } },
 ];
+
+export const MEDAL_COLORS = { bronze: '#cd7f32', silver: '#c9c9c9', gold: '#ffd700' };
 
 // Upgrades are global (affect every weapon), but the Tinker's Shop can remove
 // specific upgrade types from specific weapons. weaponRemovals holds, per
@@ -53,7 +74,7 @@ export const STAT_FIELDS = {
   bulletspeed:   ['bulletspeed'],
   damage:        ['damage'],
   pierce:        ['pierce'],
-  binaryTrigger: ['binaryTrigger'],
+  fullAuto: ['fullAuto'],
   doubleBarrel:  ['doubleBarrel'],
   windUp:        ['windUp'],
 };
@@ -102,12 +123,15 @@ export const state = {
   spaceDown: false,
   angleToPointer: 0,
 
-  weapon: {
-    type: 'pistol',
-    firemode: 'semi',
-    firerate: 90,
-    ammo: 9,
-  },
+  // Two weapon slots; the player toggles between them with 1 / 2. The active
+  // slot is mirrored into state.weapon (wired up below the literal) so all the
+  // existing single-weapon code (combat, reload, HUD) keeps working unchanged.
+  weaponSlots: [
+    { type: 'pistol', firemode: 'semi', firerate: 90, ammo: 9 },
+    { type: 'none',   firemode: 'semi', firerate: 90, ammo: 0 },
+  ],
+  activeSlot: 0,
+  weapon: null, // → weaponSlots[activeSlot]
 
   xp: 0,
   xpToLevel: 100,
@@ -117,7 +141,7 @@ export const state = {
   elapsed: 0,
   timeLeft: 120,
   gameOver: false,
-  difficulty: 1, // index into DIFFICULTIES; chosen in the menu, persists across runs
+  difficulty: 0, // index into DIFFICULTIES; chosen in the menu, persists across runs
 
   globalUpgrades,
   weaponRemovals,
@@ -140,11 +164,14 @@ export const state = {
   weapons: null,
   xpOrbs: null,
   dashLines: null,
+  muzzleFlashes: null,
 
   // audio
   pistol_sfx: null,
   shotgun_sfx: null,
   rifle_sfx: null,
+  arc_sfx: null,
+  bolt_rifle_sfx: null,
   sword_sfx: null,
   single_reload_sfx: null,
   reload_mag_sfx: null,
@@ -154,3 +181,6 @@ export const state = {
   // collision/overlap handles
   obtainWeapon: null,
 };
+
+// state.weapon always points at the active slot object.
+state.weapon = state.weaponSlots[state.activeSlot];

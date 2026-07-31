@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
-import { state, refreshActiveUpgrades, resetRun } from '../state.js';
-import { unlockWeapon, computeScore, getLeaderboard, submitScore } from '../utils/persistence.js';
+import { state, refreshActiveUpgrades, resetRun, DIFFICULTIES, MEDAL_COLORS, WEAPON_LABELS } from '../state.js';
+import { unlockWeapon, computeScore, getLeaderboard, submitScore, recordMedal, getMedalThresholds } from '../utils/persistence.js';
 import { DashLine } from '../entities/DashLine.js';
 import { Wall } from '../entities/Wall.js';
 import { Weapon } from '../entities/Weapon.js';
@@ -14,12 +14,33 @@ import { Corpse } from '../entities/Corpse.js';
 import { Spark } from '../entities/Spark.js';
 import { EnemySight } from '../entities/EnemySight.js';
 import { EnemyPathScan } from '../entities/EnemyPathScan.js';
-import { shootBullet, setWeapon, getFacingPosition, fireArcBurst } from '../utils/combat.js';
+import { MuzzleFlash } from '../entities/MuzzleFlash.js';
+import { shootBullet, setWeapon, getFacingPosition, fireArcBurst, MUZZLE_OFFSETS } from '../utils/combat.js';
 import { spawnDashLine, spawnWall, getEnemy, spawnSpark, getStage } from '../utils/spawners.js';
 import { MAX_VELOCITY, MAX_RADIUS, SPAWN_RATE } from '../config.js';
 
 // An upgrade box spawns every this-many enemy kills.
 const KILLS_PER_BOX = 12;
+// Dash launch speed, and how strongly WASD can curve a dash in flight (per frame).
+const DASH_SPEED = 1800;
+const DASH_STEER = 0.03;
+// Arc gun bogs movement down while held: max walk speed sinks toward this fraction
+// over ARC_SLOW_DOWN_MS of continuous fire, then recovers over ARC_SLOW_UP_MS.
+const ARC_SLOW_MIN = 0.5;
+const ARC_SLOW_DOWN_MS = 2500;
+const ARC_SLOW_UP_MS = 1000;
+// Rifle frag round: on its first enemy hit it splits into this many fragments, each
+// within ±this-many degrees of the round's travel vector, at 75% speed/scale and
+// half the round's damage.
+const RIFLE_FRAG_COUNT = 5;
+const RIFLE_FRAG_SPREAD_DEG = 30;
+// Grace window after a dash ends during which a sword attack still triggers the spin
+// (without carrying the dash's momentum).
+const SPIN_AFTER_DASH_MS = 250;
+// Spin rotation ease-out weight the multi-turn whirlwind approaches: 1 decelerates
+// almost to a stop, lower blends toward linear (keeps a higher speed at the finish).
+// A single-turn spin always uses full ease-out; extra multishot turns ramp toward this.
+const SPIN_ROT_EASE = 0.5;
 // Tinker's Shop is temporarily disabled (code kept for later re-enable).
 const TINKER_SHOP_ENABLED = false;
 
@@ -29,7 +50,7 @@ const UPGRADE_NAMES = {
   multishot:     'MULTISHOT',   ricochet:      'RICOCHET',
   ammoeff:       'AMMO EFF.',   bulletspeed:   'BULLET SPD',
   damage:        'DAMAGE',      pierce:        'PIERCE',
-  binaryTrigger: 'BIN. TRIG.',  doubleBarrel:  'DBL BARREL',
+  fullAuto:      'FULL AUTO',    doubleBarrel:  'DBL BARREL',
   windUp:        'WIND UP',
 };
 const UPGRADE_DESCS = {
@@ -38,7 +59,7 @@ const UPGRADE_DESCS = {
   multishot:     '+1 bullet',      ricochet:      '+1 bounce',
   ammoeff:       '+ammo eff.',     bulletspeed:   '+bullet spd',
   damage:        '+1 damage',      pierce:        '+1 pierce',
-  binaryTrigger: 'fire on release',doubleBarrel:  'shotgun 2-shot',
+  fullAuto:      'pistol: auto, 2× ammo, ½ dmg', doubleBarrel: 'shotgun 2-shot',
   windUp:        'AR spins up',
 };
 
@@ -71,13 +92,26 @@ export class MainGameScene extends Phaser.Scene {
     this.moveToPointer = false;
     this.playerAcceleration = 0;
     this._lastAutoShot = 0;
+    this._autoFirstShot = false; // first auto-shot of a trigger pull (rifle: extra accuracy)
+    this._muzzleTuner = false;   // dev tool: live-position the muzzle flash per weapon
+    this._lastShieldShot = 0;
+    this._lastWeaponScroll = 0;
+    this._arcMoveSlow = 1;       // arc-gun movement penalty: 1 = full speed, down to ARC_SLOW_MIN
     this.dashCharges = 3;
     this.maxDashCharges = 3;
     this.dashing = false;
     this.dashTimer = 0;
+    this._dashEndedAt = -9999; // time the last dash finished (for the post-dash spin window)
     this.dashStunTimer = 0;
     this.dashVx = 0;
     this.dashVy = 0;
+    this._dashDirX = 0;         // unit launch direction — steering against it is resisted
+    this._dashDirY = 0;
+    this._spinGlide = false;    // sword spin keeps dash speed (decaying) but stays steerable
+    this._spinGlideSpeed = 0;
+    this._spinGlideDirX = 0;
+    this._spinGlideDirY = 0;
+    this._spinTotalDur = 0;
     this.dashRechargeTimes = [];
     this._afterImages = [];
     this._lastAfterImageTime = 0;
@@ -91,21 +125,23 @@ export class MainGameScene extends Phaser.Scene {
     this._spinTurns = 1;         // Whirlwind: full rotations per spin, ranks up with multishot
     // Spin finisher frame timeline: two wind-up frames, the rotating frame (one full
     // body turn — the only phase that damages), then two recovery frames.
+    // frame2 (rotating segments only): the frame to advance to at the spin's halfway
+    // point, so the swing keeps moving instead of holding one frame through the turn.
     this._rightSpinTimeline = [
       { frame: 16, dur: 50,  rotate: false },
       { frame: 17, dur: 50,  rotate: false },
-      { frame: 18, dur: 250, rotate: true  },
+      { frame: 18, dur: 250, rotate: true, frame2: 19 },
       { frame: 19, dur: 50,  rotate: false },
       { frame: 24, dur: 50,  rotate: false },
-      
+
     ];
     this._leftSpinTimeline = [
       { frame: 23, dur: 50,  rotate: false },
       { frame: 22, dur: 50,  rotate: false },
-      { frame: 21, dur: 250, rotate: true  },
+      { frame: 21, dur: 250, rotate: true, frame2: 20 },
       { frame: 20, dur: 50,  rotate: false },
       { frame: 15, dur: 50,  rotate: false },
-      
+
     ];
     this._spinTimeline = this._rightSpinTimeline; // active timeline, chosen per spin
     this._modalActive = false;
@@ -123,6 +159,13 @@ export class MainGameScene extends Phaser.Scene {
     this._arcCharge = 0;
     this._shieldRestoreTimer = null;
     this._reflectSlowUntil = 0;
+    // HUD text caching — Phaser re-renders a Text object's canvas on every
+    // setColor() call (even if unchanged), so we track last-applied values
+    // and throttle the ms-precision timer to avoid re-uploads every frame.
+    this._timerHudAccum = 0;
+    this._timerColor = '';
+    this._styleColor = '';
+    this._reloadLabelColor = '';
     this.reload = {
       active: false,
       ejecting: false,
@@ -162,6 +205,7 @@ export class MainGameScene extends Phaser.Scene {
 
     this.background = this.add.tileSprite(-2500, -2500, 5000, 5000, 'background');
     this.background.setOrigin(0, 0);
+    this.background.setDepth(-10); // always behind the player, legs, and everything else
 
     this.anims.create({
       key: 'walk',
@@ -226,6 +270,7 @@ export class MainGameScene extends Phaser.Scene {
     state.xpOrbs = this.physics.add.group({ classType: XPOrb, maxSize: 200, runChildUpdate: true });
     state.enemySights = this.physics.add.group({ classType: EnemySight, maxSize: -1, runChildUpdate: true });
     state.enemyPathScanners = this.physics.add.group({ classType: EnemyPathScan, maxSize: -1, runChildUpdate: true });
+    state.muzzleFlashes = this.physics.add.group({ classType: MuzzleFlash, maxSize: 120, runChildUpdate: true });
 
     state.arcs = [];
     this.arcGraphics = this.add.graphics().setDepth(2);
@@ -238,8 +283,14 @@ export class MainGameScene extends Phaser.Scene {
       { type: 'dualPistol',  ammo: 18, firemode: 'semi', firerate: 90 },
       { type: 'shieldPistol',ammo: 6,  firemode: 'semi', firerate: 90 },
       { type: 'arc',         ammo: 60, firemode: 'auto', firerate: 80 },
+      { type: 'boltRifle',   ammo: 12, firemode: 'auto', firerate: 160 },
     ];
-    Object.assign(state.weapon, STARTER_DEFS[state.starterWeapon ?? 0]);
+    // Slot 1 holds the chosen starter; slot 2 starts empty (fists). Fresh objects
+    // each run so nothing leaks across games. Toggle between them with 1 / 2.
+    state.activeSlot = 0;
+    state.weaponSlots[0] = { ...STARTER_DEFS[state.starterWeapon ?? 0] };
+    state.weaponSlots[1] = { type: 'none', firemode: 'semi', firerate: 90, ammo: 0 };
+    state.weapon = state.weaponSlots[0];
     refreshActiveUpgrades();
     setWeapon(state.weapon.type);
 
@@ -248,6 +299,14 @@ export class MainGameScene extends Phaser.Scene {
 
     const hudStyle = { fontSize: '20px', fontFamily: 'monospace', fill: '#ffffff' };
     this.ammoText = this.add.text(20, this.scale.height - 60, '', hudStyle).setScrollFactor(0).setDepth(10);
+
+    // Two-slot weapon indicator above the ammo readout (active slot highlighted).
+    const slotStyle = { fontSize: '13px', fontFamily: 'monospace' };
+    this.slotTexts = [
+      this.add.text(20, this.scale.height - 108, '', slotStyle).setScrollFactor(0).setDepth(10),
+      this.add.text(20, this.scale.height - 90, '', slotStyle).setScrollFactor(0).setDepth(10),
+    ];
+    this._slotsHudSig = '';
     this.ammoGfx = this.add.graphics().setDepth(2);
     this.reloadGfx = this.add.graphics().setDepth(2);
     this.reloadLabel = this.add.text(0, 0, '', {
@@ -299,6 +358,14 @@ export class MainGameScene extends Phaser.Scene {
     this._boxArrowText = this.add.text(0, 0, 'U', {
       fontSize: '13px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#cc88ff',
     }).setScrollFactor(0).setDepth(15).setOrigin(0.5).setVisible(false);
+
+    // Muzzle-flash tuner (dev tool, press M): a world-space crosshair at the muzzle
+    // point plus a HUD readout of the current weapon's forward/lateral offset.
+    this._muzzleMarker = this.add.graphics().setDepth(20).setVisible(false);
+    this._muzzleTunerText = this.add.text(this.scale.width / 2, 92, '', {
+      fontSize: '14px', fontFamily: 'monospace', fill: '#00ffff', align: 'center',
+      backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
+    }).setScrollFactor(0).setDepth(20).setOrigin(0.5, 0).setVisible(false);
   }
 
   _setupCollisions() {
@@ -322,8 +389,9 @@ export class MainGameScene extends Phaser.Scene {
         4: { type: 'dualPistol',    ammo: 18, firemode: 'semi', frame: 8 },
         5: { type: 'shieldPistol', ammo: 6,  firemode: 'semi', frame: 26 },
         6: { type: 'arc',          ammo: 60, firemode: 'auto', firerate: 80, frame: 29 },
+        7: { type: 'boltRifle',    ammo: 12, firemode: 'auto', firerate: 160, frame: 30 },
       };
-      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, arc: 2.5, shotgun: 3 };
+      const PRIORITY = { none: -1, sword: 0, pistol: 1, dualPistol: 1.5, shieldPistol: 1.8, ar: 2, arc: 2.5, boltRifle: 2.7, shotgun: 3 };
 
       let lastPickupTime = 0;
 
@@ -366,6 +434,16 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(delay, () => {
       this.physics.add.overlap(state.enemyFighters, state.bullets, (enemy, bullet) => {
+        // Arc-burst rounds fling a ring of arcs on impact, then still land their
+        // direct hit (detonate(false) leaves the round for enemy.hit to consume).
+        if (bullet.arcBurst && !bullet.enemyBullet && bullet.active && !bullet._detonated) {
+          bullet.detonate(false);
+        }
+        // Rifle rounds shatter into fragments on their first enemy hit.
+        if (bullet.fragSplit && !bullet._split && !bullet.enemyBullet && bullet.active) {
+          bullet._split = true;
+          this._spawnFrags(bullet);
+        }
         enemy.hit(bullet);
       });
     });
@@ -389,6 +467,10 @@ export class MainGameScene extends Phaser.Scene {
             return;
           }
         }
+
+        // Enemy arc-burst round (shield-pistol enemies): nova into a ring of enemy
+        // arcs on the player, then still land its direct hit.
+        if (bullet.arcBurst && !bullet._detonated) bullet.detonate(false);
 
         bullet.setActive(false);
         bullet.setVisible(false);
@@ -418,6 +500,12 @@ export class MainGameScene extends Phaser.Scene {
 
     this.time.delayedCall(delay, () => {
       this.physics.add.overlap(state.walls, state.bullets, (wall, bullet) => {
+        // Arc-burst rounds (player or enemy) detonate on walls instead of bouncing.
+        if (bullet.arcBurst && bullet.active && !bullet._detonated) {
+          spawnSpark(bullet.x, bullet.y, bullet.rotation);
+          bullet.detonate(true);
+          return;
+        }
         if (bullet.bounces > 0 && bullet.bounceCooldown === 0) {
           bullet.bounces--;
           bullet.bounceCooldown = 12;
@@ -488,6 +576,31 @@ export class MainGameScene extends Phaser.Scene {
     this.d = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D, false);
     this.input.keyboard.on('keydown-SHIFT', () => this._tryDash());
 
+    // Toggle between the two weapon slots — scroll wheel, or 1 / 2 to pick directly.
+    this.input.keyboard.on('keydown-ONE', () => this._switchWeaponSlot(0));
+    this.input.keyboard.on('keydown-TWO', () => this._switchWeaponSlot(1));
+
+    // Muzzle-flash tuner (dev): M toggles, arrows nudge the offset, P prints all.
+    this._muzKeys = {
+      up:    this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.UP, false),
+      down:  this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.DOWN, false),
+      left:  this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.LEFT, false),
+      right: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.RIGHT, false),
+    };
+    this.input.keyboard.on('keydown-M', () => this._toggleMuzzleTuner());
+    this.input.keyboard.on('keydown-P', () => { if (this._muzzleTuner) this._printMuzzleOffsets(); });
+    this.input.keyboard.on('keydown-Q', () => { if (this._muzzleTuner) this._cycleTunerWeapon(-1); });
+    this.input.keyboard.on('keydown-E', () => { if (this._muzzleTuner) this._cycleTunerWeapon(1); });
+    this.input.on('wheel', (_pointer, _objs, _dx, dy) => {
+      if (dy === 0) return;
+      // Debounce so one wheel flick (often several events) switches once.
+      if (this.time.now - this._lastWeaponScroll < 120) return;
+      this._lastWeaponScroll = this.time.now;
+      const n = state.weaponSlots.length;
+      const next = (state.activeSlot + (dy > 0 ? 1 : -1) + n) % n;
+      this._switchWeaponSlot(next);
+    });
+
 
     this.input.keyboard.on('keydown-SPACE', () => {
       if (this.reload.active) {
@@ -520,8 +633,11 @@ export class MainGameScene extends Phaser.Scene {
         return;
       }
       this.shooting = true;
+      this._autoFirstShot = true; // prime first-shot accuracy for this trigger pull
       if (!pointer.leftButtonDown()) return;
-      if (state.weapon.firemode === 'semi') {
+      // Full Auto upgrade drives the pistol from the auto-fire loop, not the semi path.
+      const pistolAuto = state.weapon.type === 'pistol' && state.upgrade.fullAuto > 0;
+      if (state.weapon.firemode === 'semi' && !pistolAuto) {
         if (state.weapon.ammo <= 0 && state.weapon.type !== 'none' && state.weapon.type !== 'sword') {
           this._dryFire();
         } else {
@@ -545,9 +661,12 @@ export class MainGameScene extends Phaser.Scene {
             };
             fireOne(3);
           } else if (state.weapon.type === 'shieldPistol') {
-            if (state.shieldUp) state.player.setFrame(27);
-            if (this._shieldRestoreTimer) this._shieldRestoreTimer.remove();
-            if (state.weapon.ammo > 0) {
+            // Slow base fire rate — gate repeated clicks behind a cooldown.
+            const cooldown = Math.max(220, 420 - state.upgrade.firerateBonus * 25);
+            if (state.weapon.ammo > 0 && this.time.now - this._lastShieldShot >= cooldown) {
+              this._lastShieldShot = this.time.now;
+              if (state.shieldUp) state.player.setFrame(27);
+              if (this._shieldRestoreTimer) this._shieldRestoreTimer.remove();
               shootBullet(state.player.rotation);
               this._updateLowAmmoSound();
               if (state.shieldUp) {
@@ -565,10 +684,13 @@ export class MainGameScene extends Phaser.Scene {
       }
       if (state.weapon.type === 'none') this._doMeleePunch();
       if (state.weapon.type === 'sword') {
-        // Attacking mid-dash skips the combo requirement and goes straight into the
-        // spin, whose circular hitbox deflects any bullet touching it 360 degrees around.
-        if (this.dashing) this._doSpinAttack();
-        else this._doMeleeSword();
+        // Spin during the dash (carries the dash's momentum) or within a short grace
+        // window just after it ends (no momentum); otherwise a normal melee swing.
+        if (this.dashing || this.time.now - this._dashEndedAt < SPIN_AFTER_DASH_MS) {
+          this._doSpinAttack();
+        } else {
+          this._doMeleeSword();
+        }
       }
     });
 
@@ -595,10 +717,6 @@ export class MainGameScene extends Phaser.Scene {
     this.input.on('pointerup', (pointer) => {
       if (!pointer.leftButtonDown()) {
         this.shooting = false;
-        if (state.weapon.type === 'pistol' && state.upgrade.binaryTrigger > 0 && !this._modalActive && state.weapon.ammo > 0) {
-          shootBullet(state.player.rotation);
-          this._updateLowAmmoSound();
-        }
       }
       if (state.weapon.type !== 'none' && state.weapon.type !== 'sword' && state.weapon.type !== 'shieldPistol') {
         setWeapon(state.weapon.type);
@@ -666,6 +784,20 @@ export class MainGameScene extends Phaser.Scene {
     // Next slash follows the spin's rotation: clockwise (_spinDir 1) -> right slash (1),
     // counter-clockwise (_spinDir -1) -> left slash (0).
     this.meleeFrame = this._spinDir === 1 ? 1 : 0;
+
+    // Spin only ever launches from a dash — carry that momentum into the spin and
+    // bleed it off over the spin's length instead of cutting the dash short.
+    this._spinTotalDur = this._spinTimeline.reduce(
+      (sum, s) => sum + (s.rotate ? s.dur * this._spinTurns : s.dur), 0);
+    if (this.dashing) {
+      this._spinGlide = true;
+      const spd = Math.hypot(this.dashVx, this.dashVy) || 1800;
+      this._spinGlideSpeed = spd;               // dash speed, bled off over the spin
+      this._spinGlideDirX = this.dashVx / spd;  // initial heading = dash direction
+      this._spinGlideDirY = this.dashVy / spd;
+      this.dashing = false;              // the glide takes over from the dash
+      player.setMaxVelocity(2000);       // keep the glide from being clamped
+    }
   }
 
   _tryDash() {
@@ -684,8 +816,10 @@ export class MainGameScene extends Phaser.Scene {
     }
     this.dashing = true;
     this.dashTimer = 160;
-    this.dashVx = dir.x * 1800;
-    this.dashVy = dir.y * 1800;
+    this.dashVx = dir.x * DASH_SPEED;
+    this.dashVy = dir.y * DASH_SPEED;
+    this._dashDirX = dir.x;
+    this._dashDirY = dir.y;
     this.dashCharges--;
     this.dashRechargeTimes.push(this.time.now);
     player.setMaxVelocity(2000);
@@ -731,6 +865,38 @@ export class MainGameScene extends Phaser.Scene {
     if (this._spinning) {
       this._spinElapsed += delta;
 
+      // Glide: keep the dash's speed (tapering to a stop as the spin winds down),
+      // but let WASD steer the heading — you don't fly in a locked direction.
+      if (this._spinGlide) {
+        const p = this._spinTotalDur > 0
+          ? Phaser.Math.Clamp(this._spinElapsed / this._spinTotalDur, 0, 1) : 1;
+        const decay = 1 - p; // 1 at the start → 0 as the spin ends
+        const steer = new Phaser.Math.Vector2(
+          (this.d.isDown ? 1 : 0) - (this.a.isDown ? 1 : 0),
+          (this.s.isDown ? 1 : 0) - (this.w.isDown ? 1 : 0)
+        );
+        if (steer.lengthSq() > 0) {
+          steer.normalize();
+          // Steering starts as weak as the dash and ramps to full control by the end
+          // of the spin, so you regain agility as the spin finishes.
+          const steerStrength = DASH_STEER + (1 - DASH_STEER) * p;
+          const hx = this._spinGlideDirX + steer.x * steerStrength;
+          const hy = this._spinGlideDirY + steer.y * steerStrength;
+          const mag = Math.hypot(hx, hy) || 1;
+          this._spinGlideDirX = hx / mag;
+          this._spinGlideDirY = hy / mag;
+        }
+        // Bleed dash speed down to normal walk speed (not to a stop) over the spin.
+        const speed = MAX_VELOCITY + (this._spinGlideSpeed - MAX_VELOCITY) * decay;
+        player.body.setAcceleration(0, 0);
+        player.body.velocity.x = this._spinGlideDirX * speed;
+        player.body.velocity.y = this._spinGlideDirY * speed;
+        if (decay > 0.25 && time - this._lastAfterImageTime > 35) {
+          this._spawnAfterImage();
+          this._lastAfterImageTime = time;
+        }
+      }
+
       let acc = 0;
       let seg = null;
       let segStart = 0;
@@ -743,18 +909,26 @@ export class MainGameScene extends Phaser.Scene {
       }
 
       if (seg) {
-        player.setFrame(seg.frame);
         this.meleeHitbox.body.checkCollision.none = !seg.rotate;
         if (seg.rotate) {
           const t = (this._spinElapsed - segStart) / segDur;
-          // Ease-out: full speed right away, then gradually slows for the rest of the turn(s).
-          const eased = Phaser.Math.Easing.Quadratic.Out(t);
+          // Advance to the next swing frame at the halfway point instead of holding one.
+          player.setFrame(t >= 0.5 && seg.frame2 != null ? seg.frame2 : seg.frame);
+          // Weight = 1 at a single turn (original pure ease-out, decelerates to a
+          // near-stop); with multishot's extra turns it ramps toward SPIN_ROT_EASE so
+          // the whirlwind spins evenly instead of crawling at the end. Lands on target at t=1.
+          const easeWeight = SPIN_ROT_EASE + (1 - SPIN_ROT_EASE) / this._spinTurns;
+          const eased = Phaser.Math.Easing.Quadratic.Out(t) * easeWeight + t * (1 - easeWeight);
           player.setRotation(this._spinStartRot + this._spinDir * Math.PI * 2 * this._spinTurns * eased);
+        } else {
+          player.setFrame(seg.frame);
         }
       } else {
         // Timeline finished: hand control back to normal aiming and stay on the
         // spin's last frame until the next slash (or other action) changes it.
         this._spinning = false;
+        this._spinGlide = false;
+        player.setMaxVelocity(MAX_VELOCITY);
         this.meleeHitbox.body.checkCollision.none = true;
         this.meleeHitbox.body.setCircle(30);
         this.meleeHitbox.body.setOffset(this.meleeHitbox.width / 2 - 30, this.meleeHitbox.height / 2 - 30);
@@ -828,6 +1002,26 @@ export class MainGameScene extends Phaser.Scene {
     // ── Dash ─────────────────────────────────────────────────────────────────────
     if (this.dashing) {
       this.dashTimer -= delta;
+
+      // Half control: you keep charging in the launch direction, but WASD can nudge
+      // the heading a little each frame (renormalised so dash speed stays constant).
+      const steer = new Phaser.Math.Vector2(
+        (this.d.isDown ? 1 : 0) - (this.a.isDown ? 1 : 0),
+        (this.s.isDown ? 1 : 0) - (this.w.isDown ? 1 : 0)
+      );
+      if (steer.lengthSq() > 0) {
+        steer.normalize();
+        // Steering against the launch direction is much weaker, so you keep carrying
+        // toward where the dash started; sideways/forward input curves normally.
+        const dot = steer.x * this._dashDirX + steer.y * this._dashDirY; // -1..1
+        const strength = DASH_STEER * (1 - 0.8 * Math.max(0, -dot));
+        const hx = this.dashVx + steer.x * DASH_SPEED * strength;
+        const hy = this.dashVy + steer.y * DASH_SPEED * strength;
+        const mag = Math.hypot(hx, hy) || 1;
+        this.dashVx = (hx / mag) * DASH_SPEED;
+        this.dashVy = (hy / mag) * DASH_SPEED;
+      }
+
       player.body.velocity.x = this.dashVx;
       player.body.velocity.y = this.dashVy;
       player.body.setAcceleration(0, 0);
@@ -837,6 +1031,7 @@ export class MainGameScene extends Phaser.Scene {
       }
       if (this.dashTimer <= 0) {
         this.dashing = false;
+        this._dashEndedAt = time;
         player.setMaxVelocity(MAX_VELOCITY);
       }
     }
@@ -872,12 +1067,21 @@ export class MainGameScene extends Phaser.Scene {
 
     const moving = this.w.isDown || this.a.isDown || this.s.isDown || this.d.isDown;
 
-    if (!this.dashing) {
+    // Firing the arc gun drags your top speed down toward ARC_SLOW_MIN; it climbs
+    // back to full over ARC_SLOW_UP_MS once you let go (or run dry).
+    const firingArc = state.weapon.type === 'arc' && this.shooting && state.weapon.ammo > 0;
+    const slowSpan = 1 - ARC_SLOW_MIN;
+    this._arcMoveSlow = firingArc
+      ? Math.max(ARC_SLOW_MIN, this._arcMoveSlow - slowSpan * delta / ARC_SLOW_DOWN_MS)
+      : Math.min(1, this._arcMoveSlow + slowSpan * delta / ARC_SLOW_UP_MS);
+
+    if (!this.dashing && !this._spinGlide) {
       const aimSlow = (state.weapon.type === 'shieldPistol' && state.player.frame.name !== 26) || time < this._reflectSlowUntil;
-      player.body.setMaxVelocity(aimSlow ? MAX_VELOCITY * 0.75 : MAX_VELOCITY);
+      const cap = (aimSlow ? MAX_VELOCITY * 0.75 : MAX_VELOCITY) * this._arcMoveSlow;
+      player.body.setMaxVelocity(cap);
       if (moving) {
         if (dir.lengthSq() > 0) dir.normalize();
-        this.playerAcceleration = (10000 + state.upgrade.acceleration) * (aimSlow ? 0.75 : 1);
+        this.playerAcceleration = (10000 + state.upgrade.acceleration) * (aimSlow ? 0.75 : 1) * this._arcMoveSlow;
         legs.play('walk', true);
         const vx = player.body.velocity.x;
         const vy = player.body.velocity.y;
@@ -894,12 +1098,18 @@ export class MainGameScene extends Phaser.Scene {
 
     spawnDashLine();
     if (state.frames % 3 === 0) spawnWall();
-    if (state.frames % SPAWN_RATE === 0 && state.frames >= 500) getEnemy();
+    if (!this._muzzleTuner && state.frames % SPAWN_RATE === 0 && state.frames >= 500) getEnemy();
 
     state.windupAmmoBonus = 0;
-    if (state.weapon.firemode === 'auto' && this.shooting) {
+    // Wind-up: cadence ramps slow → full while the trigger is held. The arc gun
+    // does this by default; the AR only with the Wind Up upgrade.
+    const windupActive = state.weapon.type === 'arc' ||
+                         (state.weapon.type === 'ar' && state.upgrade.windUp > 0);
+    // Full Auto upgrade makes the pistol fire automatically like a true auto weapon.
+    const pistolAuto = state.weapon.type === 'pistol' && state.upgrade.fullAuto > 0;
+    if ((state.weapon.firemode === 'auto' || pistolAuto) && this.shooting) {
       let rate = Math.max(50, (state.weapon.firerate ?? 150) - state.upgrade.firerateBonus * 15);
-      if (state.weapon.type === 'ar' && state.upgrade.windUp > 0) {
+      if (windupActive) {
         if (state.weapon.ammo > 0) {
           this._arWindup = Math.min(1, this._arWindup + delta / 3000);
         } else {
@@ -909,17 +1119,16 @@ export class MainGameScene extends Phaser.Scene {
         rate = Math.max(rate, slowRate * Math.pow(1 / 3, this._arWindup));
         state.windupAmmoBonus = Math.pow(this._arWindup, 2) * 0.65;
       }
-      if (state.weapon.type === 'arc') {
-        // Fire rate sags as the mag drains: 100% cadence full → 50% cadence empty.
-        const max = this._maxAmmo('arc');
-        const ammoRatio = max > 0 ? Phaser.Math.Clamp(state.weapon.ammo / max, 0, 1) : 1;
-        rate = rate / (0.5 + 0.5 * ammoRatio);
-      }
       if (time - this._lastAutoShot >= rate) {
         if (state.weapon.ammo <= 0) this._dryFire();
-        else { shootBullet(player.rotation); this._lastAutoShot = time; this._updateLowAmmoSound(); }
+        else {
+          shootBullet(player.rotation, this._autoFirstShot);
+          this._autoFirstShot = false;
+          this._lastAutoShot = time;
+          this._updateLowAmmoSound();
+        }
       }
-    } else if (state.weapon.type === 'ar' && state.upgrade.windUp > 0) {
+    } else if (windupActive) {
       this._arWindup = Math.max(0, this._arWindup - delta / 800);
       state.windupAmmoBonus = Math.pow(this._arWindup, 2) * 0.65;
     }
@@ -936,6 +1145,7 @@ export class MainGameScene extends Phaser.Scene {
     this._drawReloadBar();
     this._drawAmmoBlocks();
     this._updateHUD();
+    if (this._muzzleTuner) this._updateMuzzleTuner(delta);
     this._maybeSpawnUpgradeBox();
     this._updateBoxIndicator();
 
@@ -1013,7 +1223,7 @@ export class MainGameScene extends Phaser.Scene {
   }
 
   _pickUpgradeChoices() {
-    const NON_STACKABLE = ['binaryTrigger', 'doubleBarrel', 'windUp'];
+    const NON_STACKABLE = ['fullAuto', 'doubleBarrel', 'windUp'];
     const pool = [...UPGRADE_TYPES].filter(t => !NON_STACKABLE.includes(t) || state.globalUpgrades[t] === 0);
     const choices = [];
     while (choices.length < 3 && pool.length > 0) {
@@ -1110,7 +1320,7 @@ export class MainGameScene extends Phaser.Scene {
       case 'bulletspeed':   return u.bulletspeed;
       case 'damage':        return u.damage - 1;
       case 'pierce':        return u.pierce;
-      case 'binaryTrigger': return u.binaryTrigger;
+      case 'fullAuto':      return u.fullAuto;
       case 'doubleBarrel':  return u.doubleBarrel;
       case 'windUp':        return u.windUp;
       default: return 0;
@@ -1138,7 +1348,7 @@ export class MainGameScene extends Phaser.Scene {
     const groups = [
       state.bullets, state.enemyBullets, state.dashLines, state.sparks,
       state.enemyFighters, state.walls, state.corpses, state.weapons,
-      state.xpOrbs, state.enemySights, state.enemyPathScanners,
+      state.xpOrbs, state.enemySights, state.enemyPathScanners, state.muzzleFlashes,
     ];
     for (const grp of groups) {
       if (grp) grp.runChildUpdate = !paused;
@@ -1231,7 +1441,7 @@ export class MainGameScene extends Phaser.Scene {
       case 'bulletspeed':   u.bulletspeed++; break;
       case 'damage':        u.damage++; break;
       case 'pierce':        u.pierce++; break;
-      case 'binaryTrigger': u.binaryTrigger = 1; break;
+      case 'fullAuto':      u.fullAuto = 1; break;
       case 'doubleBarrel':  u.doubleBarrel = 1; break;
       case 'windUp':        u.windUp = 1; break;
     }
@@ -1332,7 +1542,7 @@ export class MainGameScene extends Phaser.Scene {
     }).setScrollFactor(0).setDepth(21).setOrigin(0.5));
 
     // Weapon-exclusive ultimates only show for their weapon.
-    const ULTIMATE_FOR = { binaryTrigger: 'pistol', doubleBarrel: 'shotgun', windUp: 'ar' };
+    const ULTIMATE_FOR = { fullAuto: 'pistol', doubleBarrel: 'shotgun', windUp: 'ar' };
     const types = [...new Set(UPGRADE_TYPES)].filter(t => {
       const only = ULTIMATE_FOR[t];
       return !only || only === wtype;
@@ -1457,7 +1667,7 @@ export class MainGameScene extends Phaser.Scene {
     if (u.ammoEfficiency > 0)           lines.push(`AMMO EFF.   ×${u.ammoEfficiency}`);
     if (u.damage > 1)                   lines.push(`DAMAGE      ×${u.damage - 1}`);
     if (u.pierce > 0)                   lines.push(`PIERCE      ×${u.pierce}`);
-    if (u.binaryTrigger > 0)            lines.push(`BIN. TRIG.`);
+    if (u.fullAuto > 0)                 lines.push(`FULL AUTO`);
     if (u.doubleBarrel > 0)             lines.push(`DBL BARREL`);
     if (u.windUp > 0)                   lines.push(`WIND UP`);
     this.upgradeListText.setText(lines.join('\n'));
@@ -1484,7 +1694,11 @@ export class MainGameScene extends Phaser.Scene {
 
     const idx = STYLE_RANKS.findIndex(r => s >= r.min);
     const rank = STYLE_RANKS[idx];
-    this.styleText.setText(rank.grade).setColor(rank.color);
+    this.styleText.setText(rank.grade); // setText no-ops on identical strings
+    if (rank.color !== this._styleColor) {
+      this._styleColor = rank.color;
+      this.styleText.setColor(rank.color);
+    }
 
     const bandMin = rank.min;
     const bandMax = idx === 0 ? 1000 : STYLE_RANKS[idx - 1].min;
@@ -1503,17 +1717,29 @@ export class MainGameScene extends Phaser.Scene {
 
   _updateTimer(delta) {
     if (state.gameOver) return;
+    if (this._muzzleTuner) return; // freeze the run while tuning muzzle offsets
     state.timeLeft -= delta / 1000;
     if (state.timeLeft <= 0) {
       state.timeLeft = 0;
       this._triggerGameOver();
     }
+
+    // Refresh the readout at 20 Hz instead of every frame — each setText with
+    // a new string redraws the text canvas and re-uploads it to the GPU.
+    this._timerHudAccum += delta;
+    if (this._timerHudAccum < 50 && state.timeLeft > 0) return;
+    this._timerHudAccum = 0;
+
     const totalMs = Math.max(0, Math.floor(state.timeLeft * 1000));
     const m = Math.floor(totalMs / 60000);
     const s = Math.floor((totalMs % 60000) / 1000);
     const ms = totalMs % 1000;
     this.timerText.setText(`[ ${m}:${s.toString().padStart(2, '0')}.${ms.toString().padStart(3, '0')} ]`);
-    this.timerText.setColor(state.timeLeft <= 10 ? '#ff4444' : state.timeLeft <= 30 ? '#ffcc44' : '#33ff66');
+    const color = state.timeLeft <= 10 ? '#ff4444' : state.timeLeft <= 30 ? '#ffcc44' : '#33ff66';
+    if (color !== this._timerColor) {
+      this._timerColor = color;
+      this.timerText.setColor(color);
+    }
   }
 
   _triggerGameOver() {
@@ -1527,6 +1753,7 @@ export class MainGameScene extends Phaser.Scene {
 
   _showGameOverScreen() {
     this._finalScore = computeScore();
+    const medalResult = recordMedal(state.difficulty, this._finalScore);
     for (const obj of this._modalObjects) obj.destroy();
     this._modalObjects = [];
     const push = obj => { this._modalObjects.push(obj); return obj; };
@@ -1543,11 +1770,30 @@ export class MainGameScene extends Phaser.Scene {
       fontSize: '28px', fontFamily: 'monospace', fill: '#ffcc44',
     }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
 
-    push(this.add.text(W / 2, H * 0.35, `${state.kills} kills · level ${state.level}`, {
+    const diff = DIFFICULTIES[state.difficulty];
+    push(this.add.text(W / 2, H * 0.335, `${state.kills} kills · level ${state.level} · ${diff.name} ×${diff.scoreMult} score`, {
       fontSize: '15px', fontFamily: 'monospace', fill: '#888888',
     }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
 
-    push(this.add.text(W / 2, H * 0.44, 'enter your name:', {
+    // Medal for this run (thresholds scale with the difficulty multiplier).
+    const thresholds = getMedalThresholds(state.difficulty);
+    if (medalResult.medal) {
+      push(this.add.text(W / 2, H * 0.385, `★ ${medalResult.medal.toUpperCase()} MEDAL ★`, {
+        fontSize: '22px', fontFamily: 'monospace', fontStyle: 'bold',
+        fill: MEDAL_COLORS[medalResult.medal],
+      }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+    } else if (thresholds) {
+      push(this.add.text(W / 2, H * 0.385, `no medal — BRONZE at ${thresholds.bronze}`, {
+        fontSize: '14px', fontFamily: 'monospace', fill: '#666666',
+      }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+    }
+    if (medalResult.unlockedNext) {
+      push(this.add.text(W / 2, H * 0.425, `${DIFFICULTIES[state.difficulty + 1].name} MODE UNLOCKED!`, {
+        fontSize: '16px', fontFamily: 'monospace', fontStyle: 'bold', fill: '#00ff88',
+      }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
+    }
+
+    push(this.add.text(W / 2, H * 0.46, 'enter your name:', {
       fontSize: '15px', fontFamily: 'monospace', fill: '#aaaaaa',
     }).setScrollFactor(0).setDepth(31).setOrigin(0.5));
 
@@ -1638,6 +1884,9 @@ export class MainGameScene extends Phaser.Scene {
     if (this._nameInput) { this._nameInput.remove(); this._nameInput = null; }
     this._setGameplayPaused(false); // restore global anim/physics/time state before leaving
     if (state.banishing) state.banishing.stop();
+    // Wipe the finished run's upgrades/XP right away — create() also resets on
+    // the next start, but nothing between here and there may carry over.
+    resetRun();
     this.scene.start('MainMenuScene');
   }
 
@@ -1698,6 +1947,27 @@ export class MainGameScene extends Phaser.Scene {
     this._playEmptyMagSfx(t * 0.3);
   }
 
+  // Spawn the rifle round's fragments at its impact point, fanned within the spread
+  // cone around its travel direction (75% speed/scale, half damage — set in fireFrag).
+  _spawnFrags(parent) {
+    const vx = parent.body.velocity.x, vy = parent.body.velocity.y;
+    const speed = Math.hypot(vx, vy);
+    if (speed < 1) return;
+    const baseAngle = Math.atan2(vy, vx);
+    const fragSpeed = speed * 0.5;
+    const fragDmg = Math.max(0.5, parent.damage * 0.5);
+    for (let i = 0; i < RIFLE_FRAG_COUNT; i++) {
+      const frag = state.bullets.get(parent.x, parent.y);
+      if (!frag) break;
+      const angle = baseAngle +
+        Phaser.Math.DegToRad(Phaser.Math.Between(-RIFLE_FRAG_SPREAD_DEG, RIFLE_FRAG_SPREAD_DEG));
+      // Nudge forward so fragments clear the enemy they spawned on and spread outward.
+      const fx = parent.x + Math.cos(angle) * 38;
+      const fy = parent.y + Math.sin(angle) * 38;
+      frag.fireFrag(angle, fx, fy, fragSpeed, fragDmg);
+    }
+  }
+
   _dryFire() {
     const now = this.time.now;
     if (now - this._dryFireCooldown < 300) return;
@@ -1716,6 +1986,92 @@ export class MainGameScene extends Phaser.Scene {
     });
   }
 
+  // Toggle to a weapon slot: repoint state.weapon, reset per-weapon transients, and
+  // refresh the weapon-scoped upgrade view / sprite.
+  _switchWeaponSlot(slot) {
+    if (this._modalActive || state.gameOver) return;
+    if (slot === state.activeSlot || !state.weaponSlots[slot]) return;
+    if (this.reload.active) this._cancelReload();
+    state.activeSlot = slot;
+    state.weapon = state.weaponSlots[slot];
+    state.shieldUp = state.weapon.type === 'shieldPistol';
+    this._arWindup = 0;
+    refreshActiveUpgrades();
+    setWeapon(state.weapon.type);
+    state.player.body.setMaxVelocity(MAX_VELOCITY);
+    this._updateHUD();
+  }
+
+  // ── Muzzle-flash tuner (dev tool) ──────────────────────────────────────────
+  _toggleMuzzleTuner() {
+    if (this._modalActive) return;
+    this._muzzleTuner = !this._muzzleTuner;
+    this._muzzleMarker.setVisible(this._muzzleTuner).clear();
+    this._muzzleTunerText.setVisible(this._muzzleTuner);
+  }
+
+  _printMuzzleOffsets() {
+    // Copy-pasteable back into MUZZLE_OFFSETS in combat.js.
+    const lines = Object.entries(MUZZLE_OFFSETS)
+      .map(([t, o]) => `  ${t}: { forward: ${Math.round(o.forward)}, lateral: ${Math.round(o.lateral)} },`);
+    console.log('MUZZLE_OFFSETS = {\n' + lines.join('\n') + '\n};');
+  }
+
+  // Equip the next/prev tunable weapon (into the active slot) for offset testing.
+  _cycleTunerWeapon(dir) {
+    const defs = {
+      pistol:       { firemode: 'semi', firerate: 90,  ammo: 999 },
+      dualPistol:   { firemode: 'semi', firerate: 90,  ammo: 999 },
+      shieldPistol: { firemode: 'semi', firerate: 90,  ammo: 999 },
+      shotgun:      { firemode: 'semi', firerate: 90,  ammo: 999 },
+      ar:           { firemode: 'auto', firerate: 80,  ammo: 999 },
+      boltRifle:    { firemode: 'auto', firerate: 160, ammo: 999 },
+    };
+    const types = Object.keys(defs);
+    const cur = types.indexOf(state.weapon.type);
+    const next = types[(((cur < 0 ? 0 : cur) + dir) + types.length) % types.length];
+    Object.assign(state.weapon, { type: next, ...defs[next] });
+    state.shieldUp = next === 'shieldPistol';
+    refreshActiveUpgrades();
+    setWeapon(next);
+    this._updateHUD();
+  }
+
+  // Live-positions the muzzle offset for the equipped weapon: arrows nudge forward
+  // (↑↓) / lateral (←→), and a crosshair shows the resulting muzzle point.
+  _updateMuzzleTuner(delta) {
+    const off = MUZZLE_OFFSETS[state.weapon.type];
+    if (!off) {
+      this._muzzleMarker.clear();
+      this._muzzleTunerText.setText(`MUZZLE TUNER — ${state.weapon.type}\n(no muzzle flash for this weapon)\nM: exit`);
+      return;
+    }
+    state.weapon.ammo = 999; // infinite ammo while tuning so firing always works
+
+    const step = 80 * delta / 1000; // ~80 px/sec while held
+    if (this._muzKeys.up.isDown)    off.forward += step;
+    if (this._muzKeys.down.isDown)  off.forward -= step;
+    if (this._muzKeys.right.isDown) off.lateral += step;
+    if (this._muzKeys.left.isDown)  off.lateral -= step;
+
+    const { player } = state;
+    const aim = state.angleToPointer;
+    const perp = aim + Math.PI / 2;
+    const mx = player.x + Math.cos(aim) * off.forward + Math.cos(perp) * off.lateral;
+    const my = player.y + Math.sin(aim) * off.forward + Math.sin(perp) * off.lateral;
+    const g = this._muzzleMarker;
+    g.clear();
+    g.lineStyle(2, 0x00ffff, 0.9);
+    g.strokeCircle(mx, my, 9);
+    g.lineBetween(mx - 14, my, mx + 14, my);
+    g.lineBetween(mx, my - 14, mx, my + 14);
+
+    this._muzzleTunerText.setText(
+      `MUZZLE TUNER — ${state.weapon.type}\nforward ${off.forward.toFixed(0)}   lateral ${off.lateral.toFixed(0)}\n` +
+      `↑↓ forward   ←→ lateral   Q/E weapon   P print   M exit`
+    );
+  }
+
   _updateHUD() {
     const { weapon } = state;
     let ammoStr;
@@ -1724,11 +2080,29 @@ export class MainGameScene extends Phaser.Scene {
     } else if (weapon.type === 'sword') {
       ammoStr = 'SWORD  ∞';
     } else {
-      const name = weapon.type.toUpperCase();
+      const name = WEAPON_LABELS[weapon.type] ?? weapon.type.toUpperCase();
       const empty = weapon.ammo <= 0 ? '  [EMPTY]' : '';
       ammoStr = `${name}  ${weapon.ammo}${empty}`;
     }
     this.ammoText.setText(ammoStr);
+    this._updateSlotsHUD();
+  }
+
+  // Rebuilds the two-slot readout only when a slot's weapon or the active slot
+  // changes — setColor re-renders the text canvas, so gate it behind a signature.
+  _updateSlotsHUD() {
+    if (!this.slotTexts) return;
+    const sig = `${state.activeSlot}|${state.weaponSlots[0].type}|${state.weaponSlots[1].type}`;
+    if (sig === this._slotsHudSig) return;
+    this._slotsHudSig = sig;
+    for (let i = 0; i < 2; i++) {
+      const w = state.weaponSlots[i];
+      const name = WEAPON_LABELS[w.type] ?? w.type.toUpperCase();
+      const active = i === state.activeSlot;
+      this.slotTexts[i]
+        .setText(`${active ? '▶' : ' '} [${i + 1}] ${name}`)
+        .setColor(active ? '#ffffff' : '#666666');
+    }
   }
 
   // ── Reload ─────────────────────────────────────────────────────────────────
@@ -1736,7 +2110,8 @@ export class MainGameScene extends Phaser.Scene {
   _maxAmmo(type) {
     // Double-barrel locks the shotgun to 2 shells, ignoring ammo-count upgrades.
     if (type === 'shotgun' && state.upgrade.doubleBarrel > 0) return 2;
-    const base = { pistol: 9, dualPistol: 18, shieldPistol: 6, shotgun: 7, ar: 25, arc: 60 }[type] ?? 0;
+    let base = { pistol: 9, dualPistol: 18, shieldPistol: 6, shotgun: 7, ar: 25, arc: 60, boltRifle: 12 }[type] ?? 0;
+    if (type === 'pistol' && state.upgrade.fullAuto > 0) base *= 2; // Full Auto doubles the mag
     return base + state.upgrade.ammoBonus;
   }
 
@@ -1784,8 +2159,8 @@ export class MainGameScene extends Phaser.Scene {
     this.reload.ejecting = false;
     this.reload.qteActive = true;
     const wt = state.weapon.type;
-    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol' || wt === 'ar' || wt === 'arc') {
-      state.empty_mag_sfx.setDetune(wt === 'ar' || wt === 'arc' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
+    if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol' || wt === 'ar' || wt === 'arc' || wt === 'boltRifle') {
+      state.empty_mag_sfx.setDetune(wt === 'ar' || wt === 'arc' || wt === 'boltRifle' ? Phaser.Math.Between(-500, -200) : Phaser.Math.Between(-300, 0));
       this._playEmptyMagSfx(0.55);
     }
   }
@@ -1807,7 +2182,7 @@ export class MainGameScene extends Phaser.Scene {
       } else if (wt === 'pistol' || wt === 'dualPistol' || wt === 'shieldPistol') {
         state.reload_mag_sfx.setDetune(Phaser.Math.Between(-200, 200));
         state.reload_mag_sfx.play();
-      } else if (wt === 'ar' || wt === 'arc') {
+      } else if (wt === 'ar' || wt === 'arc' || wt === 'boltRifle') {
         state.reload_mag_sfx.setDetune(Phaser.Math.Between(-600, -200));
         state.reload_mag_sfx.play();
       }
@@ -1899,13 +2274,23 @@ export class MainGameScene extends Phaser.Scene {
     }
   }
 
+  // setText already no-ops on identical strings; setColor doesn't, so gate it.
+  _setReloadLabel(text, color) {
+    this.reloadLabel.setText(text);
+    if (color && color !== this._reloadLabelColor) {
+      this._reloadLabelColor = color;
+      this.reloadLabel.setColor(color);
+    }
+  }
+
   _drawReloadBar() {
     const g = this.reloadGfx;
     g.clear();
 
     if (!this.reload.active) {
       if (state.weapon.type === 'shotgun' && state.weapon.ammo <= 0) {
-        this.reloadLabel.setPosition(state.player.x, state.player.y + 82).setText('[ R ]  RELOAD').setColor('#ff4444');
+        this.reloadLabel.setPosition(state.player.x, state.player.y + 82);
+        this._setReloadLabel('[ R ]  RELOAD', '#ff4444');
       } else {
         this.reloadLabel.setText('');
       }
@@ -1930,7 +2315,7 @@ export class MainGameScene extends Phaser.Scene {
       g.fillRect(bx, by, W, H);
       g.fillStyle(0xffcc00, 0.85);
       g.fillRect(bx, by, W * fill, H);
-      this.reloadLabel.setText('[ SPACE ]  EJECT MAG').setColor('#ffcc00');
+      this._setReloadLabel('[ SPACE ]  EJECT MAG', '#ffcc00');
     } else if (this.reload.qteActive) {
       // Sweet spot
       g.fillStyle(0x00cc44, 0.75);
@@ -1940,13 +2325,15 @@ export class MainGameScene extends Phaser.Scene {
       const ix = bx + this.reload.indicator * W;
       g.fillStyle(0xffffff, 1);
       g.fillRect(ix - 2, by - 3, 4, H + 6);
-      this.reloadLabel.setText('[ SPACE / R ]').setColor('#aaaaaa');
+      this._setReloadLabel('[ SPACE / R ]', '#aaaaaa');
     } else {
       // Loading phase — flash result colour
       g.fillStyle(this.reload.result === 'hit' ? 0x00cc44 : 0xff3333, 0.45);
       g.fillRect(bx, by, W, H);
-      this.reloadLabel.setText(this.reload.result === 'hit' ? 'PERFECT' : 'MISS')
-        .setColor(this.reload.result === 'hit' ? '#00ff66' : '#ff4444');
+      this._setReloadLabel(
+        this.reload.result === 'hit' ? 'PERFECT' : 'MISS',
+        this.reload.result === 'hit' ? '#00ff66' : '#ff4444'
+      );
     }
 
     // Shotgun: per-shell pip row
