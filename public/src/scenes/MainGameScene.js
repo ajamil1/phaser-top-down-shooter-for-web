@@ -59,7 +59,7 @@ const UPGRADE_DESCS = {
   multishot:     '+1 bullet',      ricochet:      '+1 bounce',
   ammoeff:       '+ammo eff.',     bulletspeed:   '+bullet spd',
   damage:        '+1 damage',      pierce:        '+1 pierce',
-  fullAuto:      'pistol: auto, 2× ammo, ½ dmg', doubleBarrel: 'shotgun 2-shot',
+  fullAuto:      'pistol: auto, 2× ammo',        doubleBarrel: 'shotgun 2-shot',
   windUp:        'AR spins up',
 };
 

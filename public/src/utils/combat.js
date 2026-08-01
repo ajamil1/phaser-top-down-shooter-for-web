@@ -111,12 +111,10 @@ export function shootBullet(rotation, firstShot = false) {
         const shots = Math.min(1 + extraShots, weapon.ammo);
         pistol_sfx.play();
         pistol_sfx.setDetune(detune);
-        // Full Auto halves the pistol's per-shot damage.
-        const pistolDmg = upgrade.fullAuto > 0 ? (damage + 1) * 0.5 : damage + 1;
         for (let s = 0; s < shots; s++) {
           const bullet = bullets.get(player.x, player.y);
           if (!bullet) break;
-          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, Math.max(0.02, 0.07 + spreadMod), 100, false, pistolDmg);
+          bullet.fire(rotation, player.x, player.y, 4000 + speedBonus, 4500 + speedBonus, 0.02, Math.max(0.02, 0.07 + spreadMod), 100, false, damage + 1);
         }
         mainCamera.shake(100, 0.002);
         if (!freeShot) weapon.ammo -= shots;
